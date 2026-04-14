@@ -1,0 +1,33 @@
+{
+  "name": "bridges-e2e-tests",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "E2E tests for Gnosis Chain bridges (xDAI bridge & Omnibridge)",
+  "scripts": {
+    "setup": "node src/setup/setup.js",
+    "setup:autoclaim": "node src/setup/setup.js --autoclaim",
+    "test:xdai:usds-to-gc": "node src/tests/xdai/bridgeUsdsToGC.js",
+    "test:xdai:dai-to-gc": "node src/tests/xdai/bridgeDaiToGC.js",
+    "test:xdai:xdai-to-usds": "node src/tests/xdai/bridgeXdaiToUsds.js",
+    "test:xdai:xdai-to-usds:autoclaim": "node src/tests/xdai/bridgeXdaiToUsds.js --autoclaim",
+    "test:xdai:xdai-to-dai": "node src/tests/xdai/bridgeXdaiToDai.js",
+    "test:xdai:xdai-to-dai:autoclaim": "node src/tests/xdai/bridgeXdaiToDai.js --autoclaim",
+    "test:omni:eth-to-weth": "node src/tests/omni/bridgeEthToWeth.js",
+    "test:omni:weth-to-eth": "node src/tests/omni/bridgeWethToEth.js",
+    "test:omni:weth-to-eth:autoclaim": "node src/tests/omni/bridgeWethToEth.js --autoclaim",
+    "test:omni:gno-eth-to-gc": "node src/tests/omni/bridgeGnoEthToGC.js",
+    "test:omni:gno-gc-to-eth": "node src/tests/omni/bridgeGnoGCToEth.js",
+    "test:omni:gno-gc-to-eth:autoclaim": "node src/tests/omni/bridgeGnoGCToEth.js --autoclaim",
+    "test:xdai": "npm run test:xdai:usds-to-gc && npm run test:xdai:dai-to-gc && npm run test:xdai:xdai-to-usds && npm run test:xdai:xdai-to-dai",
+    "test:omni": "npm run test:omni:eth-to-weth && npm run test:omni:weth-to-eth && npm run test:omni:gno-eth-to-gc && npm run test:omni:gno-gc-to-eth",
+    "test": "npm run test:xdai && npm run test:omni",
+    "test:xdai:autoclaim": "npm run test:xdai:usds-to-gc && npm run test:xdai:dai-to-gc && npm run test:xdai:xdai-to-usds --autoclaim && npm run test:xdai:xdai-to-dai --autoclaim",
+    "test:omni:autoclaim": "npm run test:omni:eth-to-weth && npm run test:omni:weth-to-eth --autoclaim && npm run test:omni:gno-eth-to-gc && npm run test:omni:gno-gc-to-eth --autoclaim",
+    "test:autoclaim": "npm run test:xdai:autoclaim && npm run test:omni:autoclaim"
+  },
+  "dependencies": {
+    "axios": "^1.7.0",
+    "dotenv": "^16.4.0",
+    "viem": "^2.21.0"
+  }
+}

@@ -1,0 +1,8 @@
+node_modules/
+
+# Ignore all .env files, only track .example templates
+.env
+.env.*
+!.env.*.example
+src/setup/dockers/.env.*
+!src/setup/dockers/.env.*.example

@@ -1,0 +1,110 @@
+version: "2.4"
+services:
+  rabbit_xdai:
+    cpus: 0.3
+    mem_limit: 500m
+    environment: ["RABBITMQ_NODENAME=node@rabbit"]
+    hostname: rabbit
+    image: rabbitmq:3.12-management
+    networks:
+      - net_rabbit_bridge_request_xdai
+      - net_rabbit_bridge_affirmation_xdai
+      - net_rabbit_bridge_senderhome_xdai
+      - net_rabbit_bridge_senderforeign_xdai
+    restart: unless-stopped
+    volumes: ["~/bridge_data/rabbitmq_xdai:/var/lib/rabbitmq/mnesia"]
+  redis_xdai:
+    cpus: 0.1
+    mem_limit: 500m
+    command: [redis-server, --appendonly, "yes"]
+    hostname: redis
+    image: redis:latest
+    networks:
+      - net_db_bridge_request_xdai
+      - net_db_bridge_affirmation_xdai
+      - net_db_bridge_senderhome_xdai
+      - net_db_bridge_senderforeign_xdai
+      - net_db_bridge_shutdown_xdai
+    restart: unless-stopped
+    volumes: ["~/bridge_data/redis_xdai:/data"]
+    ports:
+      - "6378:6379"
+  bridge_request_xdai:
+    cpus: 0.1
+    mem_limit: 500m
+    image: tokenbridge-oracle-finality
+    env_file: ./.env.oracle.xdai
+    environment:
+      - NODE_ENV=production
+    restart: unless-stopped
+    entrypoint: yarn watcher:signature-request
+    networks:
+      - net_db_bridge_request_xdai
+      - net_rabbit_bridge_request_xdai
+  bridge_affirmation_xdai:
+    cpus: 0.1
+    mem_limit: 500m
+    image: tokenbridge-oracle-finality
+    env_file: ./.env.oracle.xdai
+    environment:
+      - NODE_ENV=production
+    restart: unless-stopped
+    entrypoint: yarn watcher:affirmation-request
+    networks:
+      - net_db_bridge_affirmation_xdai
+      - net_rabbit_bridge_affirmation_xdai
+  bridge_senderhome_xdai:
+    cpus: 0.1
+    mem_limit: 500m
+    image: tokenbridge-oracle-finality
+    env_file: ./.env.oracle.xdai
+    environment:
+      - NODE_ENV=production
+    restart: unless-stopped
+    entrypoint: yarn sender:home
+    networks:
+      - net_db_bridge_senderhome_xdai
+      - net_rabbit_bridge_senderhome_xdai
+  bridge_senderforeign_xdai:
+    cpus: 0.1
+    mem_limit: 500m
+    image: tokenbridge-oracle-finality
+    env_file: ./.env.oracle.xdai
+    environment:
+      - NODE_ENV=production
+    restart: unless-stopped
+    entrypoint: yarn sender:foreign
+    networks:
+      - net_db_bridge_senderforeign_xdai
+      - net_rabbit_bridge_senderforeign_xdai
+  bridge_shutdown_xdai:
+    cpus: 0.1
+    mem_limit: 500m
+    image: tokenbridge-oracle-finality
+    env_file: ./.env.oracle.xdai
+    environment:
+      - NODE_ENV=production
+    restart: unless-stopped
+    entrypoint: yarn manager:shutdown
+    networks:
+      - net_db_bridge_shutdown_xdai
+
+networks:
+  net_db_bridge_request_xdai:
+    driver: bridge
+  net_db_bridge_affirmation_xdai:
+    driver: bridge
+  net_db_bridge_senderhome_xdai:
+    driver: bridge
+  net_db_bridge_senderforeign_xdai:
+    driver: bridge
+  net_db_bridge_shutdown_xdai:
+    driver: bridge
+  net_rabbit_bridge_request_xdai:
+    driver: bridge
+  net_rabbit_bridge_affirmation_xdai:
+    driver: bridge
+  net_rabbit_bridge_senderhome_xdai:
+    driver: bridge
+  net_rabbit_bridge_senderforeign_xdai:
+    driver: bridge

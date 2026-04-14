@@ -1,0 +1,111 @@
+---
+version: "2.4"
+services:
+  rabbit_amb:
+    cpus: 0.3
+    mem_limit: 500m
+    environment: ["RABBITMQ_NODENAME=node@rabbit"]
+    hostname: rabbit
+    image: rabbitmq:3.12-management
+    networks:
+      - net_rabbit_bridge_request_amb
+      - net_rabbit_bridge_affirmation_amb
+      - net_rabbit_bridge_senderhome_amb
+      - net_rabbit_bridge_senderforeign_amb
+    restart: unless-stopped
+    volumes: ["~/bridge_data/rabbitmq_amb:/var/lib/rabbitmq/mnesia"]
+  redis_amb:
+    cpus: 0.1
+    mem_limit: 500m
+    command: [redis-server, --appendonly, "yes"]
+    hostname: redis
+    image: redis:latest
+    networks:
+      - net_db_bridge_request_amb
+      - net_db_bridge_affirmation_amb
+      - net_db_bridge_senderhome_amb
+      - net_db_bridge_senderforeign_amb
+      - net_db_bridge_shutdown_amb
+    restart: unless-stopped
+    volumes: ["~/bridge_data/redis_amb:/data"]
+    ports:
+      - "6379:6379"
+  bridge_request_amb:
+    cpus: 0.1
+    mem_limit: 500m
+    image: tokenbridge-oracle-finality
+    env_file: ./.env.oracle.amb
+    environment:
+      - NODE_ENV=production
+    restart: unless-stopped
+    entrypoint: yarn watcher:signature-request
+    networks:
+      - net_db_bridge_request_amb
+      - net_rabbit_bridge_request_amb
+  bridge_affirmation_amb:
+    cpus: 0.1
+    mem_limit: 500m
+    image: tokenbridge-oracle-finality
+    env_file: ./.env.oracle.amb
+    environment:
+      - NODE_ENV=production
+    restart: unless-stopped
+    entrypoint: yarn watcher:affirmation-request
+    networks:
+      - net_db_bridge_affirmation_amb
+      - net_rabbit_bridge_affirmation_amb
+  bridge_senderhome_amb:
+    cpus: 0.1
+    mem_limit: 500m
+    image: tokenbridge-oracle-finality
+    env_file: ./.env.oracle.amb
+    environment:
+      - NODE_ENV=production
+    restart: unless-stopped
+    entrypoint: yarn sender:home
+    networks:
+      - net_db_bridge_senderhome_amb
+      - net_rabbit_bridge_senderhome_amb
+  bridge_senderforeign_amb:
+    cpus: 0.1
+    mem_limit: 500m
+    image: tokenbridge-oracle-finality
+    env_file: ./.env.oracle.amb
+    environment:
+      - NODE_ENV=production
+    restart: unless-stopped
+    entrypoint: yarn sender:foreign
+    networks:
+      - net_db_bridge_senderforeign_amb
+      - net_rabbit_bridge_senderforeign_amb
+  bridge_shutdown_amb:
+    cpus: 0.1
+    mem_limit: 500m
+    image: tokenbridge-oracle-finality
+    env_file: ./.env.oracle.amb
+    environment:
+      - NODE_ENV=production
+    restart: unless-stopped
+    entrypoint: yarn manager:shutdown
+    networks:
+      - net_db_bridge_shutdown_amb
+
+networks:
+  net_db_bridge_request_amb:
+    driver: bridge
+  net_db_bridge_affirmation_amb:
+    driver: bridge
+  net_db_bridge_senderhome_amb:
+    driver: bridge
+  net_db_bridge_senderforeign_amb:
+    driver: bridge
+  net_db_bridge_shutdown_amb:
+    driver: bridge
+  net_rabbit_bridge_request_amb:
+    driver: bridge
+  net_rabbit_bridge_affirmation_amb:
+    driver: bridge
+  net_rabbit_bridge_senderhome_amb:
+    driver: bridge
+  net_rabbit_bridge_senderforeign_amb:
+    driver: bridge
