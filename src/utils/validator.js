@@ -397,6 +397,195 @@ export function assert(condition, message) {
   console.log(`  PASS: ${message}`);
 }
 
+// ---------------------------------------------------------------------------
+// Multicall (batched) helpers — a single relay receipt can carry several
+// UserRequestForSignature events, so these process *all* matching logs.
+// ---------------------------------------------------------------------------
+
+// Give the bridge validator time to observe the relay, then advance GC blocks
+// so the signatures become available (Tenderly VN does not auto-mine).
+export async function processGCMessages(blocks = 2, waitMs = 10000) {
+  console.log(`\nWaiting ${waitMs / 1000}s for bridge validator to process...`);
+  await new Promise((resolve) => setTimeout(resolve, waitMs));
+  for (let i = 0; i < blocks; i++) {
+    await axios.post(process.env.TENDERLY_GNOSIS_ADMIN_RPC, {
+      id: 1,
+      jsonrpc: "2.0",
+      method: "evm_mine",
+      params: [],
+    });
+  }
+  console.log(`Mined ${blocks} block(s) on GC`);
+}
+
+// Collect message + signatures for every xDAI UserRequestForSignature log in a
+// receipt (xDAI bridge path, via the post-USDS BridgeHelper).
+// Call processGCMessages() first so the validator has signed.
+export async function getAllXdaiSignaturesFromReceipt(client, receipt) {
+  const UserRequestForSignatureEvent =
+    "0xe1e0bc4a1db39a361e3589cae613d7b4862e1f9114dd3ff12ff45be395046968";
+  const xDAIBridgeHelper = "0xe30269bc61E677cD60aD163a221e464B7022fbf5";
+
+  const logs = receipt.logs.filter(
+    (log) => log.topics[0] === UserRequestForSignatureEvent,
+  );
+  console.log(`Found ${logs.length} xDAI UserRequestForSignature event(s)`);
+
+  const results = [];
+  for (const relevantLog of logs) {
+    const decodedData = {
+      recipient: `0x${relevantLog.data.slice(26, 66)}`,
+      value: BigInt(`0x${relevantLog.data.slice(66, 130)}`),
+      nonce: `0x${relevantLog.data.slice(130, 194)}`,
+      token: `0x${relevantLog.data.slice(218, 258)}`,
+    };
+
+    const msgHash = await client.readContract({
+      address: xDAIBridgeHelper,
+      abi: [
+        parseAbiItem(
+          "function getMessageHash(address _recipient, uint256 _value, bytes32 _origTxHash, address _token) returns (bytes32)",
+        ),
+      ],
+      functionName: "getMessageHash",
+      args: [
+        decodedData.recipient,
+        decodedData.value,
+        decodedData.nonce,
+        decodedData.token,
+      ],
+    });
+    const message = await client.readContract({
+      address: xDAIBridgeHelper,
+      abi: [parseAbiItem("function getMessage(bytes32 _msgHash) returns (bytes)")],
+      functionName: "getMessage",
+      args: [msgHash],
+    });
+    const signatures = await client.readContract({
+      address: xDAIBridgeHelper,
+      abi: [
+        parseAbiItem("function getSignatures(bytes32 _msgHash) returns (bytes)"),
+      ],
+      functionName: "getSignatures",
+      args: [msgHash],
+    });
+
+    console.log(`  xDAI message ${msgHash} signed`);
+    results.push({ message, signatures, nonce: decodedData.nonce });
+  }
+  return results;
+}
+
+// Extract every AMB UserRequestForSignature encodedData message from a receipt.
+export function getAMBMessagesFromReceipt(receipt) {
+  const eventAbi = [
+    parseAbiItem(
+      "event UserRequestForSignature(bytes32 indexed messageId, bytes encodedData)",
+    ),
+  ];
+  const logs = parseEventLogs({
+    abi: eventAbi,
+    eventName: "UserRequestForSignature",
+    logs: receipt.logs,
+  });
+  console.log(`Found ${logs.length} AMB UserRequestForSignature event(s)`);
+  return logs.map((log) => log.args.encodedData);
+}
+
+// Poll AMBBridgeHelper.getSignatures for a message until the validator has
+// signed (it reverts / returns empty before then).
+const AMB_BRIDGE_HELPER = "0x7d94ece17e81355326e3359115D4B02411825EdD";
+export async function getAMBSignatures(
+  client,
+  message,
+  ambHelper = AMB_BRIDGE_HELPER,
+) {
+  for (let attempt = 0; attempt < MAX_POLL_ATTEMPTS; attempt++) {
+    try {
+      const signatures = await client.readContract({
+        address: ambHelper,
+        abi: [
+          parseAbiItem("function getSignatures(bytes _message) returns (bytes)"),
+        ],
+        functionName: "getSignatures",
+        args: [message],
+      });
+      if (signatures && signatures !== "0x") return signatures;
+    } catch {
+      // not signed yet — keep polling
+    }
+    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL));
+  }
+  throw new Error("Timeout waiting for AMB signatures");
+}
+
+// Claim an AMB/OmniBridge message on Ethereum via the ForeignBridgeRouter.
+export async function claimAMBOnForeignRouter(
+  ethClient,
+  routerAddress,
+  message,
+  signatures,
+) {
+  console.log(`Claiming AMB message on ForeignBridgeRouter ${routerAddress}...`);
+  const { request } = await ethClient.simulateContract({
+    address: routerAddress,
+    abi: [
+      parseAbiItem(
+        "function safeExecuteSignaturesWithAutoGasLimit(bytes _data, bytes _signatures)",
+      ),
+    ],
+    functionName: "safeExecuteSignaturesWithAutoGasLimit",
+    args: [message, signatures],
+  });
+  const txHash = await ethClient.writeContract(request);
+  const receipt = await ethClient.getTransactionReceipt({ hash: txHash });
+  console.log(`Claimed AMB message, tx: ${txHash}, status: ${receipt.status}`);
+  return receipt;
+}
+
+// Like waitForAddedReceiverEvent but waits until at least `minCount` events are
+// observed (used to confirm every relay in a batch reached the Block Reward).
+export async function waitForAddedReceiverEvents(
+  client,
+  blockRewardAddress,
+  receiver,
+  bridgeAddress,
+  fromBlock,
+  minCount = 1,
+  timeout = 300000,
+) {
+  console.log(
+    `Waiting for >= ${minCount} AddedReceiver event(s) on Block Reward contract...`,
+  );
+  const startTime = Date.now();
+  const eventAbi = [
+    parseAbiItem(
+      "event AddedReceiver(uint256 amount, address indexed receiver, address indexed bridge)",
+    ),
+  ];
+
+  while (Date.now() - startTime < timeout) {
+    const logs = await client.getLogs({
+      address: blockRewardAddress,
+      event: eventAbi[0],
+      args: { receiver, bridge: bridgeAddress },
+      fromBlock,
+      toBlock: "latest",
+    });
+
+    if (logs.length >= minCount) {
+      console.log(`Found ${logs.length} AddedReceiver event(s)`);
+      return logs;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL));
+  }
+
+  throw new Error(
+    `Timeout waiting for ${minCount} AddedReceiver events after ${timeout}ms`,
+  );
+}
+
 export async function getUserRequestForSignatureEventAndGetSignatures(
   gnoClient,
   txReceipt,
