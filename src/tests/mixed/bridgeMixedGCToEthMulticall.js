@@ -58,7 +58,11 @@ const GNO_TOTAL = GNO_AMOUNT * BigInt(GNO_COUNT);
 // Explicit gas — the native relayTokens path is hard to estimate and Multicall3
 // forwards only 63/64 of gas per sub-call; budget ~2M per relay plus overhead.
 const GAS_LIMIT = 2_000_000n * BigInt(USDS_COUNT + GNO_COUNT) + 1_000_000n;
-const autoclaim = process.argv.includes("--autoclaim");
+// Accept --autoclaim from a direct `node` arg as well as npm's captured
+// `npm run ... --autoclaim` form (exposed as npm_config_autoclaim).
+const autoclaim =
+  process.argv.includes("--autoclaim") ||
+  process.env.npm_config_autoclaim === "true";
 
 const relayRecipientAbi = [parseAbiItem("function relayTokens(address recipient)")];
 const relayOmniAbi = [

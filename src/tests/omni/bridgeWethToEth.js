@@ -35,7 +35,11 @@ const gnoClient = createWalletClient({
 }).extend(publicActions);
 
 const BRIDGE_AMOUNT = parseEther("1");
-const autoclaim = process.argv.includes("--autoclaim");
+// Accept --autoclaim from a direct `node` arg as well as npm's captured
+// `npm run ... --autoclaim` form (exposed as npm_config_autoclaim).
+const autoclaim =
+  process.argv.includes("--autoclaim") ||
+  process.env.npm_config_autoclaim === "true";
 
 async function main() {
   console.log("=== Test 2.2: WETH on GC -> WETH on ETH ===\n");

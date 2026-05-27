@@ -33,9 +33,10 @@
     "test:xdai": "npm run test:xdai:usds-to-gc && npm run test:xdai:dai-to-gc && npm run test:xdai:xdai-to-usds && npm run test:xdai:xdai-to-dai",
     "test:omni": "npm run test:omni:eth-to-weth && npm run test:omni:weth-to-eth && npm run test:omni:gno-eth-to-gc && npm run test:omni:gno-gc-to-eth",
     "test": "npm run test:xdai && npm run test:omni && npm run test:multicall",
-    "test:xdai:autoclaim": "npm run test:xdai:usds-to-gc && npm run test:xdai:dai-to-gc && npm run test:xdai:xdai-to-usds --autoclaim && npm run test:xdai:xdai-to-dai --autoclaim",
-    "test:omni:autoclaim": "npm run test:omni:eth-to-weth && npm run test:omni:weth-to-eth --autoclaim && npm run test:omni:gno-eth-to-gc && npm run test:omni:gno-gc-to-eth --autoclaim",
-    "test:autoclaim": "npm run test:xdai:autoclaim && npm run test:omni:autoclaim"
+    "test:xdai:autoclaim": "npm run test:xdai:usds-to-gc && npm run test:xdai:dai-to-gc && npm run test:xdai:xdai-to-usds:autoclaim && npm run test:xdai:xdai-to-dai:autoclaim",
+    "test:omni:autoclaim": "npm run test:omni:eth-to-weth && npm run test:omni:weth-to-eth:autoclaim && npm run test:omni:gno-eth-to-gc && npm run test:omni:gno-gc-to-eth:autoclaim",
+    "test:multicall:autoclaim": "npm run test:multicall:usds-to-gc && npm run test:multicall:xdai-to-usds:autoclaim && npm run test:multicall:gno-eth-to-gc && npm run test:multicall:gno-gc-to-eth:autoclaim && npm run test:multicall:mixed-eth-to-gc && npm run test:multicall:mixed-gc-to-eth:autoclaim",
+    "test:autoclaim": "npm run test:xdai:autoclaim && npm run test:omni:autoclaim && npm run test:multicall:autoclaim"
   },
   "dependencies": {
     "axios": "^1.7.0",

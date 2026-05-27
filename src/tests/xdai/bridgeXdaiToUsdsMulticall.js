@@ -47,7 +47,11 @@ const TOTAL = BRIDGE_AMOUNT * BigInt(COUNT);
 // Explicit gas — the native relayTokens path is hard to estimate (the single
 // test hardcodes 2M for one relay); budget that per relay plus batch overhead.
 const GAS_LIMIT = 2_000_000n * BigInt(COUNT) + 500_000n;
-const autoclaim = process.argv.includes("--autoclaim");
+// Accept --autoclaim from a direct `node` arg as well as npm's captured
+// `npm run ... --autoclaim` form (exposed as npm_config_autoclaim).
+const autoclaim =
+  process.argv.includes("--autoclaim") ||
+  process.env.npm_config_autoclaim === "true";
 
 const relayTokensAbi = [parseAbiItem("function relayTokens(address recipient)")];
 

@@ -52,7 +52,11 @@ const TOTAL = BRIDGE_AMOUNT * BigInt(COUNT);
 // Explicit gas — Multicall3 forwards only 63/64 of gas per sub-call, so
 // estimation comes up short for batched bridge relays.
 const GAS_LIMIT = 2_000_000n * BigInt(COUNT) + 500_000n;
-const autoclaim = process.argv.includes("--autoclaim");
+// Accept --autoclaim from a direct `node` arg as well as npm's captured
+// `npm run ... --autoclaim` form (exposed as npm_config_autoclaim).
+const autoclaim =
+  process.argv.includes("--autoclaim") ||
+  process.env.npm_config_autoclaim === "true";
 
 const relayTokensAbi = [
   parseAbiItem(
