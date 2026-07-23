@@ -1,4 +1,3 @@
----
 version: "2.4"
 services:
   rabbit_amb:
@@ -6,7 +5,7 @@ services:
     mem_limit: 500m
     environment: ["RABBITMQ_NODENAME=node@rabbit"]
     hostname: rabbit
-    image: rabbitmq:3.12-management
+    image: rabbitmq:3
     networks:
       - net_rabbit_bridge_request_amb
       - net_rabbit_bridge_affirmation_amb
@@ -19,13 +18,14 @@ services:
     mem_limit: 500m
     command: [redis-server, --appendonly, "yes"]
     hostname: redis
-    image: redis:latest
+    image: redis:4
     networks:
       - net_db_bridge_request_amb
       - net_db_bridge_affirmation_amb
       - net_db_bridge_senderhome_amb
       - net_db_bridge_senderforeign_amb
       - net_db_bridge_shutdown_amb
+      - net_db_bridge_fcrvalidator_amb
     restart: unless-stopped
     volumes: ["~/bridge_data/redis_amb:/data"]
     ports:
@@ -33,7 +33,7 @@ services:
   bridge_request_amb:
     cpus: 0.1
     mem_limit: 500m
-    image: tokenbridge-oracle-finality
+    image: gnosischain/tokenbridge
     env_file: ./.env.oracle.amb
     environment:
       - NODE_ENV=production
@@ -45,7 +45,7 @@ services:
   bridge_affirmation_amb:
     cpus: 0.1
     mem_limit: 500m
-    image: tokenbridge-oracle-finality
+    image: gnosischain/tokenbridge
     env_file: ./.env.oracle.amb
     environment:
       - NODE_ENV=production
@@ -57,7 +57,7 @@ services:
   bridge_senderhome_amb:
     cpus: 0.1
     mem_limit: 500m
-    image: tokenbridge-oracle-finality
+    image: gnosischain/tokenbridge
     env_file: ./.env.oracle.amb
     environment:
       - NODE_ENV=production
@@ -69,7 +69,7 @@ services:
   bridge_senderforeign_amb:
     cpus: 0.1
     mem_limit: 500m
-    image: tokenbridge-oracle-finality
+    image: gnosischain/tokenbridge
     env_file: ./.env.oracle.amb
     environment:
       - NODE_ENV=production
@@ -81,7 +81,7 @@ services:
   bridge_shutdown_amb:
     cpus: 0.1
     mem_limit: 500m
-    image: tokenbridge-oracle-finality
+    image: gnosischain/tokenbridge
     env_file: ./.env.oracle.amb
     environment:
       - NODE_ENV=production
@@ -89,6 +89,17 @@ services:
     entrypoint: yarn manager:shutdown
     networks:
       - net_db_bridge_shutdown_amb
+  bridge_fcrvalidator_amb:
+    cpus: 0.1
+    mem_limit: 500m
+    image: gnosischain/tokenbridge
+    env_file: ./.env.oracle.amb
+    environment:
+      - NODE_ENV=production
+    restart: on-failure
+    entrypoint: yarn validator:fcr-txs
+    networks:
+      - net_db_bridge_fcrvalidator_amb
 
 networks:
   net_db_bridge_request_amb:
@@ -100,6 +111,8 @@ networks:
   net_db_bridge_senderforeign_amb:
     driver: bridge
   net_db_bridge_shutdown_amb:
+    driver: bridge
+  net_db_bridge_fcrvalidator_amb:
     driver: bridge
   net_rabbit_bridge_request_amb:
     driver: bridge

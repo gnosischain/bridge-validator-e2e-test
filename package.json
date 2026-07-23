@@ -5,7 +5,12 @@
   "description": "E2E tests for Gnosis Chain bridges (xDAI bridge & Omnibridge)",
   "scripts": {
     "setup": "node src/setup/setup.js",
+    "mock": "node src/mock/startMocks.js",
     "setup:autoclaim": "node src/setup/setup.js --autoclaim",
+    "setup:profile:ff": "node src/setup/setup.js --eth-mode fcr --gc-mode fcr",
+    "setup:profile:fb": "node src/setup/setup.js --eth-mode fcr --gc-mode block-finality",
+    "setup:profile:bf": "node src/setup/setup.js --eth-mode block-finality --gc-mode fcr",
+    "setup:profile:bb": "node src/setup/setup.js --eth-mode block-finality --gc-mode block-finality",
     "setup:docker-rust": "docker compose -f src/setup/docker/docker-compose-rust.yml up -d",
     "setup:docker-oracle": "docker compose -f src/setup/docker/docker-compose-amb.yml up -d && docker compose -f src/setup/docker/docker-compose-xdai.yml up -d",
     "test:xdai:usds-to-gc": "node src/tests/xdai/bridgeUsdsToGC.js",
@@ -41,6 +46,7 @@
   "dependencies": {
     "axios": "^1.7.0",
     "dotenv": "^16.4.0",
+    "express": "^5.2.1",
     "viem": "^2.21.0"
   }
 }

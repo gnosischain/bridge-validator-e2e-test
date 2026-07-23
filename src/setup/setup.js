@@ -16,6 +16,39 @@ const TENDERLY_API_TOKEN = process.env.TENDERLY_API_TOKEN;
 const TENDERLY_ACCOUNT_ID = process.env.TENDERLY_ACCOUNT_ID;
 const TENDERLY_PROJECT = process.env.TENDERLY_PROJECT;
 
+// EL mock proxy — reachable from docker containers via host.docker.internal.
+// ETH = oracle "foreign" (:8545), GC = oracle "home" (:8546). See FCR_integration.md.
+const MOCK_ETH_URL = "http://host.docker.internal:8545";
+const MOCK_GC_URL = "http://host.docker.internal:8546";
+const VALID_MODES = ["fcr", "block-finality"];
+
+// ─── Block-processing-mode profile (see FCR_integration.md) ─────────────────
+// --eth-mode / --gc-mode select the per-chain mode. When either is given the
+// validator EL RPC vars are repointed through the mock (always transparent in
+// NORMAL), and the *_BLOCK_PROCESSING_MODE env vars are written. Without any
+// mode flag, setup keeps the legacy direct-to-Tenderly wiring (no mock).
+function parseArgValue(name) {
+  const i = process.argv.indexOf(name);
+  return i >= 0 ? process.argv[i + 1] : undefined;
+}
+
+function parseModes() {
+  let eth = parseArgValue("--eth-mode");
+  let gc = parseArgValue("--gc-mode");
+  const useMock = Boolean(eth || gc);
+  if (!useMock) return { useMock: false };
+
+  // default the unspecified side to block-finality
+  eth = eth || "block-finality";
+  gc = gc || "block-finality";
+  for (const [label, m] of [["--eth-mode", eth], ["--gc-mode", gc]]) {
+    if (!VALID_MODES.includes(m)) {
+      throw new Error(`Invalid ${label} "${m}" — expected one of ${VALID_MODES.join(" | ")}`);
+    }
+  }
+  return { useMock: true, eth, gc };
+}
+
 // Contract owners on mainnet (impersonated via Tenderly Admin RPC)
 const ETH_BRIDGE_OWNER = "0x42F38ec5A75acCEc50054671233dfAC9C0E7A3F6";
 const GC_BRIDGE_OWNER = "0x7a48Dac683DA91e4faa5aB13D91AB5fd170875bd";
@@ -272,7 +305,7 @@ VALIDATOR_PRIVATE_KEY=${accounts.validatorPrivateKey}
 }
 
 // ─── Step 7: Write .env.bridge.validator for docker-compose-rust.yml ────────────────
-function writeEnvRust(ethVn, gnoVn, accounts, { autoclaim = false } = {}) {
+function writeEnvRust(ethVn, gnoVn, accounts, { autoclaim = false, modes = { useMock: false } } = {}) {
   const dockersDir = path.join(__dirname, "docker");
   const examplePath = path.join(dockersDir, ".env.bridge.validator.example");
   const envPath = path.join(dockersDir, ".env.bridge.validator");
@@ -280,13 +313,18 @@ function writeEnvRust(ethVn, gnoVn, accounts, { autoclaim = false } = {}) {
   fs.copyFileSync(examplePath, envPath);
 
   const replacements = {
-    GC_RPC: gnoVn.publicRpc,
-    ETH_RPC: ethVn.publicRpc,
+    // Route through the mock when a profile is selected, else direct to Tenderly.
+    GC_RPC: modes.useMock ? MOCK_GC_URL : gnoVn.publicRpc,
+    ETH_RPC: modes.useMock ? MOCK_ETH_URL : ethVn.publicRpc,
     AMB_VALIDATOR_PRIV_KEY: accounts.validatorPrivateKey,
     XDAI_VALIDATOR_PRIV_KEY: accounts.validatorPrivateKey,
     XDAI_EXECUTE_MESSAGE_ON_FOREIGN: autoclaim,
     AMB_EXECUTE_MESSAGE_ON_FOREIGN: autoclaim,
   };
+  if (modes.useMock) {
+    replacements.ETH_BLOCK_PROCESSING_MODE = modes.eth;
+    replacements.GC_BLOCK_PROCESSING_MODE = modes.gc;
+  }
 
   let content = fs.readFileSync(envPath, "utf8");
   for (const [key, value] of Object.entries(replacements)) {
@@ -306,16 +344,21 @@ function writeEnvRust(ethVn, gnoVn, accounts, { autoclaim = false } = {}) {
 }
 
 // ─── Step 8: Update .env.oracle.xdai and .env.oracle.amb ───────────────
-function updateOracleEnvFiles(ethVn, gnoVn, accounts) {
+function updateOracleEnvFiles(ethVn, gnoVn, accounts, modes = { useMock: false }) {
   const dockersDir = path.join(__dirname, "docker");
   const files = [".env.oracle.xdai", ".env.oracle.amb"];
 
   const replacements = {
     ORACLE_VALIDATOR_ADDRESS_PRIVATE_KEY: accounts.validatorPrivateKey,
     ORACLE_VALIDATOR_ADDRESS: accounts.validatorAddress,
-    COMMON_HOME_RPC_URL: gnoVn.publicRpc,
-    COMMON_FOREIGN_RPC_URL: ethVn.publicRpc,
+    // GC = home, ETH = foreign. Route through the mock when a profile is selected.
+    COMMON_HOME_RPC_URL: modes.useMock ? MOCK_GC_URL : gnoVn.publicRpc,
+    COMMON_FOREIGN_RPC_URL: modes.useMock ? MOCK_ETH_URL : ethVn.publicRpc,
   };
+  if (modes.useMock) {
+    replacements.ORACLE_HOME_BLOCK_PROCESSING_MODE = modes.gc;
+    replacements.ORACLE_FOREIGN_BLOCK_PROCESSING_MODE = modes.eth;
+  }
 
   for (const file of files) {
     const examplePath = path.join(dockersDir, `${file}.example`);
@@ -340,7 +383,16 @@ function updateOracleEnvFiles(ethVn, gnoVn, accounts) {
 // ─── Main ───────────────────────────────────────────────────────────────
 async function main() {
   const autoclaim = process.argv.includes("--autoclaim");
+  const modes = parseModes();
   console.log("=== Bridges E2E Test Setup ===\n");
+  if (modes.useMock) {
+    console.log(
+      `Block-processing profile: ETH=${modes.eth}, GC=${modes.gc} → validators routed through EL mock (${MOCK_ETH_URL} / ${MOCK_GC_URL}).`,
+    );
+    console.log("  Remember to run `npm run mock` before starting the validators.\n");
+  } else {
+    console.log("No --eth-mode/--gc-mode given → legacy direct-to-Tenderly wiring (no mock).\n");
+  }
 
   const required = [
     "TENDERLY_API_TOKEN",
@@ -361,8 +413,8 @@ async function main() {
 
   // 3. Write .env.testnet, .env.bridge.validator, and update oracle env files
   writeEnvTestnet(ethVn, gnoVn, accounts);
-  writeEnvRust(ethVn, gnoVn, accounts, { autoclaim });
-  updateOracleEnvFiles(ethVn, gnoVn, accounts);
+  writeEnvRust(ethVn, gnoVn, accounts, { autoclaim, modes });
+  updateOracleEnvFiles(ethVn, gnoVn, accounts, modes);
 
   // 4. Fund accounts
   await fundAccounts(
