@@ -6,6 +6,21 @@
   "scripts": {
     "setup": "node src/setup/setup.js",
     "mock": "node src/mock/startMocks.js",
+    "test:finality:bf:stalls": "node src/tests/finality/block-finality/stallsUntilFinalized.js",
+    "test:finality:bf:completes": "node src/tests/finality/block-finality/completesAfterFinalized.js",
+    "test:finality:bf": "npm run test:finality:bf:stalls && npm run test:finality:bf:completes",
+    "test:finality:fcr:happy": "node src/tests/finality/fcr/happyPath.js",
+    "test:finality:fcr:reorg": "node src/tests/finality/fcr/reorgFalsePositive.js",
+    "test:finality:fcr:preflight-unsupported": "node src/tests/finality/fcr/preflightSafeUnsupported.js",
+    "test:finality:fcr:preflight-null": "node src/tests/finality/fcr/preflightSafeNull.js",
+    "test:finality:fcr": "npm run test:finality:fcr:preflight-unsupported && npm run test:finality:fcr:preflight-null && npm run test:finality:fcr:happy && npm run test:finality:fcr:reorg",
+    "test:finality": "npm run test:finality:bf && npm run test:finality:fcr",
+    "test:finality:p3:bf-eth": "node src/tests/finality/block-finality/ethStallsThenCompletes.js",
+    "test:finality:p3:fcr-happy-gc": "node src/tests/finality/fcr/happyPathGcSource.js",
+    "test:finality:p3:fcr-reorg-gc": "node src/tests/finality/fcr/reorgFalsePositiveGcSource.js",
+    "test:finality:p3:preflight-unsupported-gc": "node src/tests/finality/fcr/preflightSafeUnsupportedGc.js",
+    "test:finality:p3:preflight-null-gc": "node src/tests/finality/fcr/preflightSafeNullGc.js",
+    "test:finality:p3": "npm run test:finality:p3:preflight-unsupported-gc && npm run test:finality:p3:preflight-null-gc && npm run test:finality:p3:fcr-happy-gc && npm run test:finality:p3:fcr-reorg-gc && npm run test:finality:p3:bf-eth",
     "setup:autoclaim": "node src/setup/setup.js --autoclaim",
     "setup:profile:ff": "node src/setup/setup.js --eth-mode fcr --gc-mode fcr",
     "setup:profile:fb": "node src/setup/setup.js --eth-mode fcr --gc-mode block-finality",
@@ -47,6 +62,7 @@
     "axios": "^1.7.0",
     "dotenv": "^16.4.0",
     "express": "^5.2.1",
+    "ioredis": "^5.11.1",
     "viem": "^2.21.0"
   }
 }

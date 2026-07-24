@@ -118,12 +118,26 @@ complete within a bounded window, then advances finality past the block and asse
       dependency); confirm bulk block advancement works on the fork networks.
 - [x] **EL mock proxy** — proxy + tag synthesis + reorg/pin/null/unsupported presets; prove
       transparent passthrough in NORMAL state.
-- [~] **Setup profiles + Layer A** — per-chain mode flags and profile scripts; repoint the
-  validator EL RPC at the mock. Smoke subset passes end-to-end; full suite run still pending.
-- [ ] **Block-finality behavior (Layer B)** — stall-until-finalized and completes-after-finalized
-      drivers; pick the bounded negative-assertion window.
-- [ ] **FCR observer + happy path (Layer B)** — state observer; deposit → pending → confirmed.
-- [ ] **FCR preflight + reorg (Layer B)** — `safe` unsupported / empty preflight cases; reorg →
-      false positive.
-- [ ] **Full matrix** — run Layer A across all profiles, Layer B where relevant; decide CI scope.
+- [x] **Setup profiles + Layer A** — per-chain mode flags and profile scripts; repoint the
+  validator EL RPC at the mock. Full 14-test Layer A suite PASSES under both P2 and P3 (amb + xdai
+  stacks through the mock). Fixed a pre-existing xdai-env blocker (stale `ORACLE_*_START_BLOCK`).
+- [x] **Block-finality behavior (Layer B)** — `tests/finality/lib/{deposit,setMockState,bfFlow}.js`
+      + `block-finality/{stallsUntilFinalized,completesAfterFinalized}.js` (`npm run test:finality:bf`).
+      Target GC→ETH (source = GC = block-finality under P2/fb); completion asserted on-chain via the
+      validator signature (`AMBBridgeHelper.getSignatures`). Negative-assertion window: 45s for bf-1,
+      20s for bf-2 (configurable) — comfortably beats a normal ~15–30s relay, quick for CI. Both
+      PASSED live under P2: validator withheld the signature while GC `finalized` was pinned below
+      the deposit block, then signed once `evm_increaseBlocks` pushed finality past it.
+- [x] **FCR observer + happy path (Layer B)** — Redis observer (`src/observer/`, ioredis) reading
+      the validator's `pendingSafeBlocks` / `safeTxFalsePositives` state; `lib/fcrFlow.js` +
+      `fcr/happyPath.js` (`npm run test:finality:fcr:happy`). PASSED live under P2 (ETH=fcr): deposit
+      seen `pending` at `safe`, then `confirmed` (pruned, no false positive) once finality crossed it.
+- [x] **FCR preflight + reorg (Layer B)** — `fcr/{preflightSafeUnsupported,preflightSafeNull,
+      reorgFalsePositive}.js` (`npm run test:finality:fcr`). All PASSED live under P2: `safe`→-32602
+      fails loud (probe retries, no silent downgrade); `safe`→null falls back to `finalized`; a reorg
+      armed after the block is pending yields a recorded false positive (checker hash-mismatch).
+- [x] **Full matrix (P2 + P3)** — Layer A 14/14 and the mode-specific Layer B suite PASS under both
+      P2 (ETH=fcr, GC=block-finality) and P3 (ETH=block-finality, GC=fcr), covering all four
+      `(chain, mode)` behavior pairs. P1/P4 (same-mode-both-chains) left as optional interaction-only
+      runs. Recommended CI scope: P2 + P3.
 - [ ] **Later** — second observer backend + wiring once the alternate validator's FCR support ships.
