@@ -1,10 +1,10 @@
 // FCR Condition 3 — happy path: pending → confirmed.
-// Source = ETH (fcr under profile P2/fb). Deposit GNO ETH→GC; the fcr watcher
+// Source = ETH (fcr under profile `ethfcr-gcbf`). Deposit GNO ETH→GC; the fcr watcher
 // records the deposit block as pending (processed at `safe`), and once finality
 // crosses it the fcrTxsChecker validates the (unchanged) hash and prunes it →
 // confirmed, with no false positive.
 //
-// Requires: a profile where ETH is fcr (P1/ff or P2/fb) + `npm run mock`.
+// Requires: a profile where ETH is fcr (`ethfcr-gcbf` or `ethfcr-gcfcr`) + `npm run mock`.
 //   node src/tests/finality/fcr/happyPath.js
 
 import { createWalletClient, http, publicActions, parseEther } from "viem";
@@ -37,7 +37,7 @@ async function main() {
   console.log("=== FCR C3: happy path pending → confirmed (ETH→GC) ===\n");
 
   await fcrHappyPathFlow({
-    source: "eth", // ETH = oracle foreign = fcr under P2
+    source: "eth", // ETH = oracle foreign = fcr under `ethfcr-gcbf`
     redisUrl: REDIS_URLS.amb, // omnibridge stack Redis (:6379)
     deposit: () =>
       deposit({

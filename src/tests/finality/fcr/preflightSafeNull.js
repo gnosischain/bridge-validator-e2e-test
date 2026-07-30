@@ -1,9 +1,9 @@
 // FCR preflight, `safe` legitimately empty.
-// Set the ETH (foreign, fcr under P2) mock so the `safe` tag returns
+// Set the ETH (foreign, fcr under `ethfcr-gcbf`) mock so the `safe` tag returns
 // `result: null`, restart the fcr watcher, and assert it treats this as None
 // and falls back to `finalized` (does NOT fail loud). Restores safe→follow.
 //
-// Requires: a profile where ETH is fcr (P1/ff or P2/fb) + `npm run mock` + the
+// Requires: a profile where ETH is fcr (`ethfcr-gcbf` or `ethfcr-gcfcr`) + `npm run mock` + the
 // amb oracle stack running.
 //   node src/tests/finality/fcr/preflightSafeNull.js
 

@@ -14,16 +14,45 @@ import Redis from "ioredis";
 
 export class RedisObserver {
   constructor(url) {
+    this.url = url;
+    this.firstError = null;
     this.redis = new Redis(url, {
       lazyConnect: true,
       maxRetriesPerRequest: 2,
       enableOfflineQueue: true,
     });
-    this._connected = this.redis.connect().catch(() => {});
+    // ioredis emits `error` per failed connection attempt; with no listener node
+    // prints an opaque "[ioredis] Unhandled error event ECONNREFUSED" stack and
+    // the real failure only shows up later as "max retries per request". Keep the
+    // last one so `ready()` can name the endpoint instead.
+    this.redis.on("error", (err) => {
+      this.firstError ??= err;
+    });
+    this._connected = this.redis
+      .connect()
+      .then(() => {
+        this.firstError = null;
+      })
+      // connect() rejects with a generic "Connection is closed." once retries are
+      // exhausted; the socket-level cause (ECONNREFUSED) came through `error`
+      // first, so keep that.
+      .catch((err) => {
+        this.firstError ??= err;
+      });
   }
 
+  // Fail fast and loudly, like PostgresObserver.ready(), rather than letting the
+  // first read time out well into a scenario.
   async ready() {
     await this._connected;
+    if (this.redis.status !== "ready") {
+      throw new Error(
+        `RedisObserver: cannot reach ${this.url} (${this.firstError?.code || this.firstError?.message || this.redis.status}). ` +
+          `Is the oracle stack up (npm run setup:docker-oracle)? If you are running the rust ` +
+          `validator instead, use the :rust scripts / OBSERVER_BACKEND=postgres. ` +
+          `Diagnose with: npm run observer:check`,
+      );
+    }
     return this;
   }
 

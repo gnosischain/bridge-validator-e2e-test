@@ -1,9 +1,9 @@
-// FCR C3 (P3 direction) — happy path on GC: pending → confirmed.
-// Source = GC (fcr under profile P3/bf). Deposit GNO GC→ETH; the GC fcr watcher
+// FCR C3 (GC source) — happy path on GC: pending → confirmed.
+// Source = GC (fcr under profile `ethbf-gcfcr`). Deposit GNO GC→ETH; the GC fcr watcher
 // (signature-request, home) records the deposit block pending at `safe`, and
 // once finality crosses it the checker validates the hash → confirmed.
 //
-// Requires: a profile where GC is fcr (P3/bf or P1/ff) + `npm run mock`.
+// Requires: a profile where GC is fcr (`ethbf-gcfcr` or `ethfcr-gcfcr`) + `npm run mock`.
 //   node src/tests/finality/fcr/happyPathGcSource.js
 
 import { createWalletClient, http, publicActions, parseEther } from "viem";
@@ -33,10 +33,10 @@ const gnoClient = createWalletClient({
 const BRIDGE_AMOUNT = parseEther("1");
 
 async function main() {
-  console.log("=== FCR C3 (P3): happy path pending → confirmed (GC→ETH) ===\n");
+  console.log("=== FCR C3 (GC source): happy path pending → confirmed (GC→ETH) ===\n");
 
   await fcrHappyPathFlow({
-    source: "gc", // GC = oracle home = fcr under P3
+    source: "gc", // GC = oracle home = fcr under `ethbf-gcfcr`
     redisUrl: REDIS_URLS.amb,
     deposit: () =>
       deposit({
@@ -49,10 +49,10 @@ async function main() {
       }),
   });
 
-  console.log("\n=== FCR C3 (P3) PASSED (pending → confirmed) ===");
+  console.log("\n=== FCR C3 (GC source) PASSED (pending → confirmed) ===");
 }
 
 main().catch((err) => {
-  console.error("\n=== FCR C3 (P3) FAILED ===", err);
+  console.error("\n=== FCR C3 (GC source) FAILED ===", err);
   process.exitCode = 1;
 });

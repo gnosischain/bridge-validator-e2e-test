@@ -1,9 +1,9 @@
-// bf-2: a block-finality validator attests once the source block is finalized.
-// Source = GC (block-finality under profile P2/fb). Deposit GNO GC→ETH, pin GC
+// stall-complete (GC source): a block-finality validator attests once the source block is finalized.
+// Source = GC (block-finality under profile `ethfcr-gcbf`). Deposit GNO GC→ETH, pin GC
 // `finalized` below the deposit block, assert a brief stall, then advance GC
 // finality past the block (evm_increaseBlocks) and assert the validator signs.
 //
-// Requires: a profile where GC is block-finality (P2/fb or P4/bb) + `npm run mock`.
+// Requires: a profile where GC is block-finality (`ethfcr-gcbf` or `ethbf-gcbf`) + `npm run mock`.
 //   node src/tests/finality/block-finality/completesAfterFinalized.js
 
 import { createWalletClient, http, publicActions, parseEther } from "viem";
@@ -32,12 +32,12 @@ const gnoClient = createWalletClient({
 const BRIDGE_AMOUNT = parseEther("1");
 
 async function main() {
-  console.log("=== bf-2: block-finality completes after finalized (GC→ETH) ===\n");
+  console.log("=== stall-complete: block-finality completes after finalized (GC→ETH) ===\n");
 
   await blockFinalityFlow({
     source: "gc",
-    // Shorter stall window here — bf-1 owns the exhaustive negative assertion;
-    // bf-2 just confirms the gate lifts once finality advances.
+    // Shorter stall window here — `:stall` owns the exhaustive negative assertion;
+    // this one just confirms the gate lifts once finality advances.
     negativeWindowMs: 20000,
     deposit: () =>
       deposit({
@@ -54,10 +54,10 @@ async function main() {
     },
   });
 
-  console.log("\n=== bf-2 PASSED (validator attested after finalization) ===");
+  console.log("\n=== stall-complete PASSED (validator attested after finalization) ===");
 }
 
 main().catch((err) => {
-  console.error("\n=== bf-2 FAILED ===", err);
+  console.error("\n=== stall-complete FAILED ===", err);
   process.exitCode = 1;
 });

@@ -1,9 +1,9 @@
-// bf (P3 direction) — block-finality on ETH: ETH→GC does NOT complete until the
+// bf (ETH source) — block-finality on ETH: ETH→GC does NOT complete until the
 // ETH deposit block is finalized, then completes. Source = ETH (block-finality
-// under profile P3/bf). Deposit GNO ETH→GC; completion observed on-chain via the
-// GC GNO balance increase. Combines bf-1 (stall) + bf-2 (complete) in one flow.
+// under profile `ethbf-gcfcr`). Deposit GNO ETH→GC; completion observed on-chain via the
+// GC GNO balance increase. Combines the negative and positive halves in one flow.
 //
-// Requires: a profile where ETH is block-finality (P3/bf or P4/bb) + `npm run mock`.
+// Requires: a profile where ETH is block-finality (`ethbf-gcfcr` or `ethbf-gcbf`) + `npm run mock`.
 //   node src/tests/finality/block-finality/ethStallsThenCompletes.js
 
 import { createWalletClient, http, publicActions, parseEther } from "viem";
@@ -39,7 +39,7 @@ const gnoClient = createWalletClient({
 const BRIDGE_AMOUNT = parseEther("1");
 
 async function main() {
-  console.log("=== bf (P3): block-finality on ETH, stall then complete (ETH→GC) ===\n");
+  console.log("=== stall-complete (ETH source): block-finality on ETH, stall then complete (ETH→GC) ===\n");
 
   const initialGnoGC = await getErc20Balance(
     gnoClient,
@@ -71,10 +71,10 @@ async function main() {
     },
   });
 
-  console.log("\n=== bf (P3) PASSED (ETH block-finality: stalled, then completed) ===");
+  console.log("\n=== stall-complete (ETH source) PASSED (ETH block-finality: stalled, then completed) ===");
 }
 
 main().catch((err) => {
-  console.error("\n=== bf (P3) FAILED ===", err);
+  console.error("\n=== stall-complete (ETH source) FAILED ===", err);
   process.exitCode = 1;
 });

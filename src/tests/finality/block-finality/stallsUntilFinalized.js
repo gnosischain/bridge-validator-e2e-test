@@ -1,9 +1,9 @@
-// bf-1: a block-finality validator does NOT attest while the source block is
-// unfinalized. Source = GC (block-finality under profile P2/fb). We deposit
+// stall (GC source): a block-finality validator does NOT attest while the source block is
+// unfinalized. Source = GC (block-finality under profile `ethfcr-gcbf`). We deposit
 // GNO GC→ETH, pin GC `finalized` below the deposit block, and assert the
 // validator does not sign within a bounded window.
 //
-// Requires: a profile where GC is block-finality (P2/fb or P4/bb) + `npm run mock`.
+// Requires: a profile where GC is block-finality (`ethfcr-gcbf` or `ethbf-gcbf`) + `npm run mock`.
 //   node src/tests/finality/block-finality/stallsUntilFinalized.js
 
 import { createWalletClient, http, publicActions, parseEther } from "viem";
@@ -32,7 +32,7 @@ const gnoClient = createWalletClient({
 const BRIDGE_AMOUNT = parseEther("1");
 
 async function main() {
-  console.log("=== bf-1: block-finality stalls until finalized (GC→ETH) ===\n");
+  console.log("=== stall: block-finality stalls until finalized (GC→ETH) ===\n");
 
   await blockFinalityFlow({
     source: "gc",
@@ -52,10 +52,10 @@ async function main() {
     stopAfterStall: true,
   });
 
-  console.log("\n=== bf-1 PASSED (validator did not attest while unfinalized) ===");
+  console.log("\n=== stall PASSED (validator did not attest while unfinalized) ===");
 }
 
 main().catch((err) => {
-  console.error("\n=== bf-1 FAILED ===", err);
+  console.error("\n=== stall FAILED ===", err);
   process.exitCode = 1;
 });

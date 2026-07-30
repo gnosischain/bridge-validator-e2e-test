@@ -122,7 +122,8 @@ complete within a bounded window, then advances finality past the block and asse
   validator EL RPC at the mock. Full 14-test Layer A suite PASSES under both P2 and P3 (amb + xdai
   stacks through the mock). Fixed a pre-existing xdai-env blocker (stale `ORACLE_*_START_BLOCK`).
 - [x] **Block-finality behavior (Layer B)** — `tests/finality/lib/{deposit,setMockState,bfFlow}.js`
-      + `block-finality/{stallsUntilFinalized,completesAfterFinalized}.js` (`npm run test:finality:bf`).
+      + `block-finality/{stallsUntilFinalized,completesAfterFinalized}.js`
+      (`npm run test:finality:ethfcr-gcbf:{stall,stall-complete}`).
       Target GC→ETH (source = GC = block-finality under P2/fb); completion asserted on-chain via the
       validator signature (`AMBBridgeHelper.getSignatures`). Negative-assertion window: 45s for bf-1,
       20s for bf-2 (configurable) — comfortably beats a normal ~15–30s relay, quick for CI. Both
@@ -130,10 +131,10 @@ complete within a bounded window, then advances finality past the block and asse
       the deposit block, then signed once `evm_increaseBlocks` pushed finality past it.
 - [x] **FCR observer + happy path (Layer B)** — Redis observer (`src/observer/`, ioredis) reading
       the validator's `pendingSafeBlocks` / `safeTxFalsePositives` state; `lib/fcrFlow.js` +
-      `fcr/happyPath.js` (`npm run test:finality:fcr:happy`). PASSED live under P2 (ETH=fcr): deposit
+      `fcr/happyPath.js` (`npm run test:finality:ethfcr-gcbf:happy`). PASSED live under P2 (ETH=fcr): deposit
       seen `pending` at `safe`, then `confirmed` (pruned, no false positive) once finality crossed it.
 - [x] **FCR preflight + reorg (Layer B)** — `fcr/{preflightSafeUnsupported,preflightSafeNull,
-      reorgFalsePositive}.js` (`npm run test:finality:fcr`). All PASSED live under P2: `safe`→-32602
+      reorgFalsePositive}.js` (the fcr half of `npm run test:finality:ethfcr-gcbf`). All PASSED live under P2: `safe`→-32602
       fails loud (probe retries, no silent downgrade); `safe`→null falls back to `finalized`; a reorg
       armed after the block is pending yields a recorded false positive (checker hash-mismatch).
 - [x] **Full matrix (P2 + P3)** — Layer A 14/14 and the mode-specific Layer B suite PASS under both
@@ -141,3 +142,235 @@ complete within a bounded window, then advances finality past the block and asse
       `(chain, mode)` behavior pairs. P1/P4 (same-mode-both-chains) left as optional interaction-only
       runs. Recommended CI scope: P2 + P3.
 - [ ] **Later** — second observer backend + wiring once the alternate validator's FCR support ships.
+
+---
+
+# Dev
+
+Step-by-step commands for a full-coverage run (Layer A + Layer B, both modes on both chains)
+against **either** validator. The test files are identical for both backends — which validator
+they drive is pure infra, selected by env vars that the `:rust` npm scripts set for you.
+
+## What "full coverage" means
+
+Full coverage = the whole suite under **two profiles**:
+
+| Profile        | ETH mode         | GC mode          | Covers                            |
+| -------------- | ---------------- | ---------------- | --------------------------------- |
+| `ethfcr-gcbf`  | `fcr`            | `block-finality` | ETH-as-fcr + GC-as-block-finality |
+| `ethbf-gcfcr`  | `block-finality` | `fcr`            | GC-as-fcr + ETH-as-block-finality |
+
+Together those four cells are every `(chain, mode)` behavior pair. `ethfcr-gcfcr` and `ethbf-gcbf`
+are same-mode-on-both-chains and add interaction coverage only — optional, and they run with the
+same commands (swap the `setup:profile:*` script; Layer B drivers pick their source chain by
+profile, so under those two run whichever Layer B suite matches).
+
+> **Legacy labels.** Older notes and commit messages call these profiles P1–P4:
+> P1 = `ethfcr-gcfcr` (`ff`), P2 = `ethfcr-gcbf` (`fb`), P3 = `ethbf-gcfcr` (`bf`),
+> P4 = `ethbf-gcbf` (`bb`). The scripts now spell the modes out, and the test aggregate always
+> matches the setup script: `setup:profile:X` → `test:finality:X`.
+
+Per profile:
+
+- **Layer A** — `npm test` (14 tests: 4 xdai + 4 omni + 6 multicall). Backend-agnostic, all
+  on-chain.
+- **Layer B** — `npm run test:finality:<profile>` (the same name you passed to `setup:profile:`).
+  The `:stall*` drivers assert on-chain; the fcr drivers read validator state, so they need the
+  right observer backend.
+
+## Prerequisites (once)
+
+```bash
+npm install
+cp .env.example .env          # fill TENDERLY_API_TOKEN / ACCOUNT_ID / PROJECT
+```
+
+Only for the rust stack — the image is not buildable from this repo:
+
+```bash
+cd ../bridge-validator
+docker build -f bridge_validator/Dockerfile -t bridge-validator:fcr .
+cd -
+```
+
+## Step 1 — Setup the profile
+
+One run writes env for **both** stacks (`.env.testnet`, `src/setup/docker/.env.oracle.{amb,xdai}`,
+`src/setup/docker/.env.bridge.validator`), so the profile is chosen once regardless of which
+validator you then start:
+
+```bash
+npm run setup:profile:ethfcr-gcbf      # ETH=fcr, GC=block-finality
+```
+
+This creates two **new** Tenderly VNs each time it runs. Everything downstream (mock, docker
+stacks, persisted validator state) is now stale — steps 2 and 3 exist to deal with that.
+
+## Step 2 — Start the EL mock
+
+```bash
+pkill -9 -f "src/mock/startMocks.js"   # a stale mock still holds :8545/:8546
+npm run mock &                          # :8545 = ETH, :8546 = GC
+```
+
+**Restart the mock after every `setup:profile:*`** — it reads the upstream fork URLs from
+`.env.testnet` at boot. `kill %1` does not reach a mock backgrounded from a different shell;
+kill by pattern. Sanity check: the mock's `eth_blockNumber` must equal the tip of
+`TENDERLY_ETHEREUM_RPC` read directly.
+
+## Step 3 — Start ONE validator stack (cold)
+
+Both stacks persist progress, and that state is keyed to the previous VNs' block heights. A stale
+high-water mark above the new tip makes the validator report "all blocks already processed" and
+never see a deposit — so start cold.
+
+### Option A — Oracle (Node.js, Redis-backed)
+
+```bash
+cd src/setup/docker
+docker compose -f docker-compose-amb.yml up -d --force-recreate
+docker compose -f docker-compose-xdai.yml up -d --force-recreate
+
+# Flush the persisted high-water mark WITHOUT racing the watchers — stop every
+# watcher/sender first, flush, then start:
+docker compose -f docker-compose-amb.yml stop \
+  bridge_request_amb bridge_affirmation_amb bridge_senderhome_amb \
+  bridge_senderforeign_amb bridge_shutdown_amb bridge_fcrvalidator_amb
+docker exec docker-redis_amb-1 redis-cli FLUSHALL     # then DBSIZE must be 0
+docker compose -f docker-compose-amb.yml start
+
+# Same for the xdai stack (its redis is published on :6378):
+docker compose -f docker-compose-xdai.yml stop \
+  bridge_request_xdai bridge_affirmation_xdai bridge_senderhome_xdai \
+  bridge_senderforeign_xdai bridge_shutdown_xdai bridge_fcrvalidator_xdai
+docker exec docker-redis_xdai-1 redis-cli FLUSHALL
+docker compose -f docker-compose-xdai.yml start
+cd -
+```
+
+A plain `restart` is not enough: the old watcher rewrites its in-memory progress after the flush.
+Confirm the watcher logs show `fromRedis:null` and a `headBlock` equal to the new tip.
+`bridge_fcrvalidator_{amb,xdai}` is the fcrTxsChecker — the service the fcr happy-path and reorg
+tests are actually asserting on; it must be up for those two.
+
+Container names assume the default compose project name (`docker`, from the directory). Check with
+`docker compose -f docker-compose-amb.yml ps` if `docker exec` says no such container.
+
+### Option B — Rust bridge-validator (Postgres-backed)
+
+```bash
+docker compose -f src/setup/docker/docker-compose-rust.yml down -v   # -v drops the postgres volume
+npm run setup:docker-rust
+docker logs -f bridge-worker    # wait for it to index up to the new tip, then Ctrl-C
+```
+
+`down -v` is the cold start here — it discards `event_logs` rows carrying block numbers from the
+previous VNs.
+
+### Verify the observer can reach the validator's state store
+
+```bash
+npm run observer:check
+```
+
+This is the fastest way to catch a backend mismatch: an FCR test that dials Redis while only the
+rust stack is up fails with `ECONNREFUSED`. It prints which store is reachable and the matching
+scripts.
+
+## Step 4 — Run the suite
+
+### Oracle
+
+```bash
+# after `npm run setup:profile:ethfcr-gcbf`
+npm test                             # Layer A — 14 tests
+npm run test:finality:ethfcr-gcbf    # Layer B — gate ×2 + fcr ×4 (preflight ×2, happy, reorg)
+
+# after re-running steps 1-3 with `npm run setup:profile:ethbf-gcfcr`
+npm test
+npm run test:finality:ethbf-gcfcr    # Layer B — fcr ×4 (GC source) + gate ×1 (ETH source)
+```
+
+### Rust bridge-validator
+
+Same tests, `:rust` variants for the FCR ones:
+
+```bash
+# after `npm run setup:profile:ethfcr-gcbf`
+npm test                                 # Layer A — unchanged, backend-agnostic
+npm run test:finality:ethfcr-gcbf:rust   # same 6, with the 4 fcr ones on Postgres
+
+# after `npm run setup:profile:ethbf-gcfcr`
+npm test
+npm run test:finality:ethbf-gcfcr:rust
+```
+
+The `:rust` scripts exist only to set infra env vars, never to change an assertion:
+
+| Env var                       | Value for the rust stack                       | Used by                        |
+| ----------------------------- | ---------------------------------------------- | ------------------------------ |
+| `OBSERVER_BACKEND`            | `postgres`                                     | `src/observer/index.js`        |
+| `FCR_COMPOSE`                 | `src/setup/docker/docker-compose-rust.yml`     | `lib/dockerControl.js`         |
+| `FCR_SERVICE` / `FCR_CONTAINER` | `worker` / `bridge-worker`                   | `lib/preflightFlow.js`         |
+
+Equivalent long form, if you want to run a single file directly:
+
+```bash
+OBSERVER_BACKEND=postgres node src/tests/finality/fcr/happyPath.js
+
+FCR_COMPOSE=src/setup/docker/docker-compose-rust.yml \
+FCR_SERVICE=worker FCR_CONTAINER=bridge-worker \
+node src/tests/finality/fcr/preflightSafeUnsupported.js
+```
+
+> **Gotcha:** these must be real env vars on the command line. Putting `OBSERVER_BACKEND` in
+> `.env` does **not** work — `src/observer/index.js` reads it at module-eval time, which happens
+> before the test file's own `dotenv.config()` body runs. Same for `FCR_*`.
+
+Individual Layer B tests, both backends. Prefix with `npm run`; `<p>` is the profile you set up
+(`ethfcr-gcbf` or `ethbf-gcfcr`).
+
+| Scenario                                 | Oracle                                    | Rust                                           |
+| ---------------------------------------- | ----------------------------------------- | ---------------------------------------------- |
+| fcr preflight, `safe` -32602             | `test:finality:<p>:preflight-unsupported` | `test:finality:<p>:preflight-unsupported:rust` |
+| fcr preflight, `safe` null               | `test:finality:<p>:preflight-null`        | `test:finality:<p>:preflight-null:rust`        |
+| fcr happy path                           | `test:finality:<p>:happy`                 | `test:finality:<p>:happy:rust`                 |
+| fcr reorg → false positive               | `test:finality:<p>:reorg`                 | `test:finality:<p>:reorg:rust`                 |
+| block-finality gate, negative only       | `test:finality:ethfcr-gcbf:stall`         | same (on-chain)                                |
+| block-finality gate, negative + positive | `test:finality:<p>:stall-complete`        | same (on-chain)                                |
+| everything for the profile               | `test:finality:<p>`                       | `test:finality:<p>:rust`                       |
+
+`:stall` exists only under `ethfcr-gcbf` (GC source); `ethbf-gcfcr` folds both halves into its
+`:stall-complete` (ETH source).
+
+## Step 5 — Teardown
+
+```bash
+pkill -9 -f "src/mock/startMocks.js"
+docker compose -f src/setup/docker/docker-compose-amb.yml down
+docker compose -f src/setup/docker/docker-compose-xdai.yml down
+docker compose -f src/setup/docker/docker-compose-rust.yml down -v
+```
+
+## Known per-backend status
+
+- **Oracle** — Layer A 14/14 and the full Layer B suite pass under P2 and P3. Its `safe`-preflight
+  reaches the same end state (demote to `block-finality`), but gets there differently from
+  bridge-validator; the alignment gaps are tracked in `ORACLE_FCR_DOWNGRADE_TODO.md`.
+- **Rust bridge-validator** — Layer A and the fcr **preflight** tests pass. The fcr **state** tests
+  (`happy`, `reorg`) currently time out through no fault of the harness:
+  `on_chain_sender.rs::delete_event_log` deletes the `event_logs` row on delivery, destroying the
+  row carrying `fcr_status='pending'` before `fcr_checker` (polling on `finalized`) can resolve it.
+  On a Tenderly VN `safe` == tip, so delivery always beats the checker's window. Needs a
+  soft-delete, or deferred deletion until the checker resolves the row, on the validator side.
+
+## Alternate wiring knobs
+
+Rarely needed — the defaults cover both stacks as configured here.
+
+| Env var                              | Default                                                              |
+| ------------------------------------ | -------------------------------------------------------------------- |
+| `REDIS_URL_AMB` / `REDIS_URL_XDAI`   | `redis://localhost:6379` / `:6378`                                   |
+| `POSTGRES_URL`                       | `postgresql://bridge:bridge_password@localhost:5432/bridge_validator` |
+| `BRIDGE_VALIDATOR_IMAGE`             | `bridge-validator:fcr`                                               |
+| `FCR_CHECK_INTERVAL_SECS`            | `10` in `.env.bridge.validator` (validator default 30s)              |

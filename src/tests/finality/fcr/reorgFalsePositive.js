@@ -1,11 +1,11 @@
 // FCR Condition 4 — reorg → false positive.
-// Source = ETH (fcr under profile P2/fb). Deposit GNO ETH→GC; once the fcr
+// Source = ETH (fcr under profile `ethfcr-gcbf`). Deposit GNO ETH→GC; once the fcr
 // watcher has stored the deposit block as pending (real hash captured at
 // `safe`), arm a reorg for that block so it returns a different hash. When
 // finality crosses it the fcrTxsChecker revalidates, detects the hash mismatch,
 // and records a false positive (detector-only — nothing is undone on-chain).
 //
-// Requires: a profile where ETH is fcr (P1/ff or P2/fb) + `npm run mock`.
+// Requires: a profile where ETH is fcr (`ethfcr-gcbf` or `ethfcr-gcfcr`) + `npm run mock`.
 //   node src/tests/finality/fcr/reorgFalsePositive.js
 
 import { createWalletClient, http, publicActions, parseEther } from "viem";

@@ -1,10 +1,10 @@
-// FCR C4 (P3 direction) — reorg → false positive on GC.
-// Source = GC (fcr under profile P3/bf). Deposit GNO GC→ETH; once the GC fcr
+// FCR C4 (GC source) — reorg → false positive on GC.
+// Source = GC (fcr under profile `ethbf-gcfcr`). Deposit GNO GC→ETH; once the GC fcr
 // watcher has stored the block pending (real hash at `safe`), arm a reorg for
 // that block. When finality crosses it the checker detects the hash mismatch and
 // records a false positive on the `home` chain.
 //
-// Requires: a profile where GC is fcr (P3/bf or P1/ff) + `npm run mock`.
+// Requires: a profile where GC is fcr (`ethbf-gcfcr` or `ethfcr-gcfcr`) + `npm run mock`.
 //   node src/tests/finality/fcr/reorgFalsePositiveGcSource.js
 
 import { createWalletClient, http, publicActions, parseEther } from "viem";
@@ -34,7 +34,7 @@ const gnoClient = createWalletClient({
 const BRIDGE_AMOUNT = parseEther("1");
 
 async function main() {
-  console.log("=== FCR C4 (P3): reorg → false positive (GC→ETH) ===\n");
+  console.log("=== FCR C4 (GC source): reorg → false positive (GC→ETH) ===\n");
 
   await fcrReorgFalsePositiveFlow({
     source: "gc",
@@ -50,10 +50,10 @@ async function main() {
       }),
   });
 
-  console.log("\n=== FCR C4 (P3) PASSED (reorged block → false positive) ===");
+  console.log("\n=== FCR C4 (GC source) PASSED (reorged block → false positive) ===");
 }
 
 main().catch((err) => {
-  console.error("\n=== FCR C4 (P3) FAILED ===", err);
+  console.error("\n=== FCR C4 (GC source) FAILED ===", err);
   process.exitCode = 1;
 });

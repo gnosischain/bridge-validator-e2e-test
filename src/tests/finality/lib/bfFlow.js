@@ -11,8 +11,8 @@
 //   5. advance the tip past X and let `finalized` follow → finalized ≥ X
 //   6. POSITIVE assertion: the bridge completes
 //
-// bf-1 (stallsUntilFinalized) runs steps 1–4 with stopAfterStall.
-// bf-2 (completesAfterFinalized) runs the whole flow.
+// `:stall` (stallsUntilFinalized) runs steps 1–4 with stopAfterStall.
+// `:stall-complete` (completesAfterFinalized) runs the whole flow.
 
 import {
   resetMock,
