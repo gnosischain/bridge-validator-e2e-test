@@ -4,5 +4,10 @@ node_modules/
 .env
 .env.*
 !.env.*.example
+!contracts/.env.example
+
+# Foundry build output for contract K
+contracts/out/
+contracts/cache/
 src/setup/dockers/.env.*
 !src/setup/dockers/.env.*.example

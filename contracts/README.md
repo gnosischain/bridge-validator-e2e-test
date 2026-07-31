@@ -173,21 +173,61 @@ every event in the gap.
 **4. Firewall.** The UI is bound to `127.0.0.1:8080`, so it is not reachable from
 the internet by default. Keep it that way and tunnel:
 
+On the droplet:
+
 ```bash
-ufw allow OpenSSH && ufw enable
+ufw allow OpenSSH      # must come first, or `ufw enable` locks you out
+ufw enable             # answer "y"; the prompt about ssh is expected
+ufw status verbose
+```
+
+Keep that SSH session open and confirm from a second terminal before closing it:
+`ssh root@<droplet-ip> 'echo still reachable'`. If you are locked out anyway,
+DigitalOcean's web console (Droplet → Access → Launch Droplet Console) is
+out-of-band and unaffected — run `ufw disable` from there.
+
+`OpenSSH` is a profile for port 22 only; on a custom SSH port use
+`ufw allow <port>/tcp`. Note that ufw is general hygiene, not what protects the
+monitor — see the warning above. DigitalOcean's Cloud Firewall (Networking →
+Firewalls) filters ahead of the droplet, so unlike ufw it does catch
+Docker-published ports, and it cannot lock you out of the console.
+
+Then, from your machine:
+
+```bash
 ssh -N -L 8080:127.0.0.1:8080 root@<droplet-ip>   # then open http://localhost:8080
 ```
 
-To expose it instead, put Caddy in front — it handles TLS and basic auth in four
-lines. Publish the port only through Caddy, never by changing the compose
-binding to `0.0.0.0`.
+> **Do not change the compose binding to `0.0.0.0`.** `ufw` will not protect you
+> if you do: Docker writes its own iptables rules in the `DOCKER-USER` chain,
+> which are evaluated *before* ufw's, so a published port stays reachable from
+> the internet even with `ufw deny 8080` in place. The `127.0.0.1:` prefix is
+> what keeps the port private, not the firewall.
+
+**5. Exposing it publicly (optional).** Putting Caddy in front makes the site
+reachable by anyone who can resolve the hostname — Caddy listens on `0.0.0.0`.
+Access control is whatever you configure; the `basic_auth` block below applies
+to the whole site, so both the UI and `/api/metrics` require credentials.
+
+Install from Caddy's own apt repo — the version in Ubuntu 24.04's universe is
+2.7.x, where the directive is still spelled `basicauth` and the config below
+will fail to load.
 
 ```bash
-apt-get install -y caddy
+apt-get install -y debian-keyring debian-archive-keyring apt-transport-https curl
+curl -1sLf https://dl.cloudsmith.io/public/caddy/stable/gpg.key \
+  | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+curl -1sLf https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt \
+  > /etc/apt/sources.list.d/caddy-stable.list
+apt-get update && apt-get install -y caddy
+caddy version    # expect v2.8 or newer
+
+caddy hash-password --plaintext '<your-password>'   # copy the $2a$... hash
+
 cat > /etc/caddy/Caddyfile <<'EOF'
 monitor.example.com {
     basic_auth {
-        admin <bcrypt-hash-from: caddy hash-password>
+        admin $2a$14$<paste-the-hash-here>
     }
     reverse_proxy 127.0.0.1:8080
 }
@@ -195,8 +235,24 @@ EOF
 systemctl reload caddy && ufw allow 80,443/tcp
 ```
 
-**5. Health.** `GET /healthz` returns 503 when the last tick failed — point
-DigitalOcean Monitoring or an uptime check at it.
+This needs a real DNS A record pointing at the droplet — Caddy provisions a
+Let's Encrypt certificate on first request and redirects HTTP to HTTPS, so the
+basic-auth password is never sent in the clear.
+
+Consider whether you want this public at all. The page is read-only and the
+underlying events are public chain data, but it does publish your validators'
+error rate and lag, and the contract K addresses. An IP allowlist is stricter
+than a password if only your team needs it:
+
+```
+@notallowed not remote_ip 203.0.113.4 198.51.100.0/24
+abort @notallowed
+```
+
+**6. Health.** `GET /healthz` returns 503 when the last tick failed — point
+DigitalOcean Monitoring or an uptime check at it. Note that behind `basic_auth`
+this endpoint needs credentials too; if your uptime checker can't send them, give
+it its own path in the Caddyfile above the `basic_auth` block.
 
 ## Layout
 
