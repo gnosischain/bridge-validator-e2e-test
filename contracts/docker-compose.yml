@@ -1,0 +1,40 @@
+# Validator timing monitor: one indexer/UI process + Redis.
+#
+#   cp .env.example .env   # fill in RPCs and the two contract K addresses
+#   docker compose up -d
+#   open http://127.0.0.1:8080
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: timing-redis
+    restart: unless-stopped
+    # AOF on: the block cursor and open events must survive a restart, otherwise
+    # a redeploy silently skips every event in the gap.
+    command: ["redis-server", "--appendonly", "yes", "--save", "300", "10"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  monitor:
+    build: ./monitor
+    container_name: timing-monitor
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      REDIS_URL: redis://redis:6379
+    # Bound to loopback: put Caddy/nginx in front if this should be public.
+    ports:
+      - "127.0.0.1:8080:8080"
+
+volumes:
+  redis_data:
+    driver: local

@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Bridge validator timing</title>
+<style>
+  :root { --bg:#fff; --fg:#111; --muted:#666; --line:#e3e3e3; --ok:#127a3d; --bad:#b3261e; --warn:#8a6100; --card:#fafafa; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#141414; --fg:#eee; --muted:#999; --line:#2c2c2c; --ok:#4ade80; --bad:#f87171; --warn:#fbbf24; --card:#1c1c1c; }
+  }
+  * { box-sizing:border-box }
+  body { margin:0; padding:24px; background:var(--bg); color:var(--fg);
+         font:14px/1.5 ui-sans-serif,-apple-system,Segoe UI,Roboto,sans-serif }
+  h1 { font-size:18px; margin:0 0 4px }
+  h2 { font-size:15px; margin:28px 0 8px }
+  .meta { color:var(--muted); font-size:12px; margin-bottom:20px }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin-bottom:8px }
+  .tile { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:10px 12px }
+  .tile .k { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.04em }
+  .tile .v { font-size:22px; font-variant-numeric:tabular-nums; margin-top:2px }
+  .ok { color:var(--ok) } .bad { color:var(--bad) } .warn { color:var(--warn) }
+  .scroll { overflow-x:auto; max-width:100% }
+  table { border-collapse:collapse; width:100%; font-size:13px }
+  th,td { text-align:left; padding:6px 10px; border-bottom:1px solid var(--line); white-space:nowrap }
+  th { color:var(--muted); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.04em }
+  td.num { text-align:right; font-variant-numeric:tabular-nums }
+  a { color:inherit }
+  code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px }
+  .empty { color:var(--muted); font-style:italic; padding:6px 0 }
+  .stale { color:var(--bad); font-weight:600 }
+</style>
+</head>
+<body>
+<h1>Bridge validator timing</h1>
+<div class="meta" id="meta">loading…</div>
+<div id="out"></div>
+
+<script>
+const fmt = n => (n ?? 0).toLocaleString();
+const ago = ts => { if (!ts) return "n/a"; const s = Math.floor(Date.now()/1000) - ts;
+  return s < 60 ? s+"s ago" : s < 3600 ? Math.floor(s/60)+"m ago" : Math.floor(s/3600)+"h ago"; };
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const shortHash = h => h ? h.slice(0,10)+"…" : "";
+let EXPLORERS = {};
+
+const txLink = (chain, hash) =>
+  hash ? `<a href="${EXPLORERS[chain]}/tx/${esc(hash)}" target="_blank" rel="noopener"><code>${shortHash(hash)}</code></a>` : "";
+
+// eth->gc events originate on Ethereum; gc->eth on Gnosis Chain.
+const srcChain = dir => dir === "eth->gc" ? "eth" : "gc";
+
+function tileRaw(label, html, cls) {
+  return `<div class="tile"><div class="k">${label}</div><div class="v ${cls||""}">${html}</div></div>`;
+}
+const tile = (label, value, cls) => tileRaw(label, fmt(value), cls);
+
+function sampleTable(rows, kind) {
+  if (!rows.length) return `<div class="empty">none</div>`;
+  const head = kind === "delayed"
+    ? "<tr><th>bridge</th><th>direction</th><th>id</th><th>delay</th><th>limit</th><th>source tx</th><th>signed tx</th></tr>"
+    : "<tr><th>bridge</th><th>direction</th><th>id</th><th>age</th><th>source tx</th></tr>";
+  const body = rows.map(r => {
+    const src = srcChain(r.dir);
+    return kind === "delayed"
+      ? `<tr><td>${esc(r.bridge)}</td><td>${esc(r.dir)}</td><td><code>${shortHash(r.id)}</code></td>
+         <td class="num bad">${r.delay}s</td><td class="num">${r.limit}s</td>
+         <td>${txLink(src, r.sourceTx)}</td><td>${txLink("gc", r.signedTx)}</td></tr>`
+      : `<tr><td>${esc(r.bridge)}</td><td>${esc(r.dir)}</td><td><code>${shortHash(r.id)}</code></td>
+         <td class="num bad">${Math.floor(r.age/60)}m</td><td>${txLink(src, r.sourceTx)}</td></tr>`;
+  }).join("");
+  return `<div class="scroll"><table>${head}${body}</table></div>`;
+}
+
+function renderValidator(v, d) {
+  const line = (label, b) => `<tr><td>${label}</td>
+      <td class="num">${fmt(b.eth)}</td><td class="num">${fmt(b.byBridge.eth.amb)}</td><td class="num">${fmt(b.byBridge.eth.xdai)}</td>
+      <td class="num">${fmt(b.gc)}</td><td class="num">${fmt(b.byBridge.gc.amb)}</td><td class="num">${fmt(b.byBridge.gc.xdai)}</td></tr>`;
+  return `
+  <h2>${esc(v.name)} &middot; <code>${esc(v.address)}</code></h2>
+  <div class="grid">
+    ${tile("signed from ETH", v.signed.eth)}
+    ${tile("signed from GC", v.signed.gc)}
+    ${tile("on time", v.ontime.eth + v.ontime.gc, "ok")}
+    ${tile("delayed", v.delayed.eth + v.delayed.gc, (v.delayed.eth+v.delayed.gc) ? "bad" : "")}
+    ${tile("missed", v.missed.eth + v.missed.gc, (v.missed.eth+v.missed.gc) ? "bad" : "")}
+    ${tile("awaiting verdict", v.pending)}
+  </div>
+  <div class="scroll"><table>
+    <tr><th></th><th colspan="3">from ETH (limit ${d.thresholds.eth}s)</th><th colspan="3">from GC (limit ${d.thresholds.gc}s)</th></tr>
+    <tr><th></th><th>total</th><th>amb</th><th>xdai</th><th>total</th><th>amb</th><th>xdai</th></tr>
+    ${line("signed", v.signed)}
+    ${line("on time", v.ontime)}
+    ${line("delayed", v.delayed)}
+    ${line("missed", v.missed)}
+  </table></div>
+  ${v.unmatched.eth + v.unmatched.gc
+      ? `<div class="meta">${fmt(v.unmatched.eth + v.unmatched.gc)} receipt(s) with no matching source event (usually predate the indexer start block)</div>`
+      : ""}
+  <h2 style="font-size:13px">delayed (latest ${v.delayedSamples.length})</h2>
+  ${sampleTable(v.delayedSamples, "delayed")}
+  <h2 style="font-size:13px">missed (latest ${v.missedSamples.length})</h2>
+  ${sampleTable(v.missedSamples, "missed")}`;
+}
+
+async function refresh() {
+  try {
+    const d = await (await fetch("/api/metrics", {cache:"no-store"})).json();
+    EXPLORERS = d.explorers;
+    const stale = d.lastTick && !d.lastTick.ok;
+    document.getElementById("meta").innerHTML =
+      `ETH block ${fmt(d.heads.eth?.block)} (${ago(d.heads.eth?.ts)}) &middot; ` +
+      `GC block ${fmt(d.heads.gc?.block)} (${ago(d.heads.gc?.ts)}) &middot; ` +
+      `every ${d.tickSeconds}s &middot; grace ${Math.round(d.graceSeconds/60)}m` +
+      (stale ? ` &middot; <span class="stale">last tick failed: ${esc(d.lastTick.error)}</span>` : "");
+    document.getElementById("out").innerHTML = `
+      <div class="grid">
+        ${tile("source events from ETH", d.global.src.eth)}
+        ${tile("source events from GC", d.global.src.gc)}
+        ${tileRaw("ETH · amb / xdai", `${fmt(d.global.byBridge.eth.amb)} / ${fmt(d.global.byBridge.eth.xdai)}`)}
+        ${tileRaw("GC · amb / xdai", `${fmt(d.global.byBridge.gc.amb)} / ${fmt(d.global.byBridge.gc.xdai)}`)}
+      </div>
+      ${d.validators.map(v => renderValidator(v, d)).join("")}`;
+  } catch (e) {
+    document.getElementById("meta").innerHTML = `<span class="stale">cannot reach api: ${esc(e.message)}</span>`;
+  }
+}
+refresh();
+setInterval(refresh, 15000);
+</script>
+</body>
+</html>
