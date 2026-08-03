@@ -5,7 +5,7 @@ services:
     mem_limit: 500m
     environment: ["RABBITMQ_NODENAME=node@rabbit"]
     hostname: rabbit
-    image: rabbitmq:3.12-management
+    image: rabbitmq:3
     networks:
       - net_rabbit_bridge_request_xdai
       - net_rabbit_bridge_affirmation_xdai
@@ -18,13 +18,14 @@ services:
     mem_limit: 500m
     command: [redis-server, --appendonly, "yes"]
     hostname: redis
-    image: redis:latest
+    image: redis:4
     networks:
       - net_db_bridge_request_xdai
       - net_db_bridge_affirmation_xdai
       - net_db_bridge_senderhome_xdai
       - net_db_bridge_senderforeign_xdai
       - net_db_bridge_shutdown_xdai
+      - net_db_bridge_fcrvalidator_xdai
     restart: unless-stopped
     volumes: ["~/bridge_data/redis_xdai:/data"]
     ports:
@@ -32,7 +33,7 @@ services:
   bridge_request_xdai:
     cpus: 0.1
     mem_limit: 500m
-    image: tokenbridge-oracle-finality
+    image: gnosischain/tokenbridge
     env_file: ./.env.oracle.xdai
     environment:
       - NODE_ENV=production
@@ -44,7 +45,7 @@ services:
   bridge_affirmation_xdai:
     cpus: 0.1
     mem_limit: 500m
-    image: tokenbridge-oracle-finality
+    image: gnosischain/tokenbridge
     env_file: ./.env.oracle.xdai
     environment:
       - NODE_ENV=production
@@ -56,7 +57,7 @@ services:
   bridge_senderhome_xdai:
     cpus: 0.1
     mem_limit: 500m
-    image: tokenbridge-oracle-finality
+    image: gnosischain/tokenbridge
     env_file: ./.env.oracle.xdai
     environment:
       - NODE_ENV=production
@@ -68,7 +69,7 @@ services:
   bridge_senderforeign_xdai:
     cpus: 0.1
     mem_limit: 500m
-    image: tokenbridge-oracle-finality
+    image: gnosischain/tokenbridge
     env_file: ./.env.oracle.xdai
     environment:
       - NODE_ENV=production
@@ -80,7 +81,7 @@ services:
   bridge_shutdown_xdai:
     cpus: 0.1
     mem_limit: 500m
-    image: tokenbridge-oracle-finality
+    image: gnosischain/tokenbridge
     env_file: ./.env.oracle.xdai
     environment:
       - NODE_ENV=production
@@ -88,6 +89,17 @@ services:
     entrypoint: yarn manager:shutdown
     networks:
       - net_db_bridge_shutdown_xdai
+  bridge_fcrvalidator_xdai:
+    cpus: 0.1
+    mem_limit: 500m
+    image: gnosischain/tokenbridge
+    env_file: ./.env.oracle.xdai
+    environment:
+      - NODE_ENV=production
+    restart: on-failure
+    entrypoint: yarn validator:fcr-txs
+    networks:
+      - net_db_bridge_fcrvalidator_xdai
 
 networks:
   net_db_bridge_request_xdai:
@@ -99,6 +111,8 @@ networks:
   net_db_bridge_senderforeign_xdai:
     driver: bridge
   net_db_bridge_shutdown_xdai:
+    driver: bridge
+  net_db_bridge_fcrvalidator_xdai:
     driver: bridge
   net_rabbit_bridge_request_xdai:
     driver: bridge

@@ -1,0 +1,15 @@
+{
+  "name": "bridge-validator-timing-monitor",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Indexes the real bridges + contract K and reports validator signing latency",
+  "engines": { "node": ">=20.6" },
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --env-file=../.env src/index.js"
+  },
+  "dependencies": {
+    "ioredis": "^5.11.1"
+  }
+}
