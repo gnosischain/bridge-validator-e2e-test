@@ -223,6 +223,15 @@ npm run test:multicall       # 6 batched/multicall tests
 | `npm run test:omni:gno-eth-to-gc` | GNO (Ethereum) -> GNO (Gnosis Chain)   |
 | `npm run test:omni:gno-gc-to-eth` | GNO (Gnosis Chain) -> GNO (Ethereum)   |
 
+**Omnibridge implementation upgrade** — flip both mediator proxies to the new implementations and
+re-verify the WETH GC→ETH claim paths. Neither script needs a validator container; see
+[`src/tests/omni/upgrade/README.md`](src/tests/omni/upgrade/README.md).
+
+| Command                              | What it does                                                        |
+| ------------------------------------ | ------------------------------------------------------------------- |
+| `npm run upgrade:omnibridge`         | `upgradeTo` on the Foreign + Home proxies, asserts storage preserved |
+| `npm run test:omni:upgrade:weth-eth` | WETH (GC) → ETH across every `ForeignAMB` relay path                |
+
 **Multicall / batched:**
 
 | Command                                  | What it batches                           |

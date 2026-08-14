@@ -43,6 +43,8 @@
     "test:xdai:xdai-to-usds:autoclaim": "node src/tests/xdai/bridgeXdaiToUsds.js --autoclaim",
     "test:xdai:xdai-to-dai": "node src/tests/xdai/bridgeXdaiToDai.js",
     "test:xdai:xdai-to-dai:autoclaim": "node src/tests/xdai/bridgeXdaiToDai.js --autoclaim",
+    "upgrade:omnibridge": "node src/tests/omni/upgrade/upgradeOmnibridge.js",
+    "test:omni:upgrade:weth-eth": "node src/tests/omni/upgrade/wethToEthGasLimit.js",
     "test:omni:eth-to-weth": "node src/tests/omni/bridgeEthToWeth.js",
     "test:omni:weth-to-eth": "node src/tests/omni/bridgeWethToEth.js",
     "test:omni:weth-to-eth:autoclaim": "node src/tests/omni/bridgeWethToEth.js --autoclaim",
