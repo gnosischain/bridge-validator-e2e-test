@@ -1,0 +1,158 @@
+name: Bridge E2E
+
+# Runs the e2e suite against fresh Tenderly Virtual TestNets, one pair per job,
+# deleted at the end of the job. Every run generates new random keys.
+#
+# Called from gnosischain/tokenbridge (see its .github/workflows/oracle_e2e.yml)
+# to test the oracle built from a tokenbridge commit; it can also be run here by
+# hand or on PRs to this repo, against tokenbridge master.
+
+on:
+  workflow_call:
+    inputs:
+      tokenbridge_ref:
+        description: tokenbridge commit/branch whose oracle/Dockerfile is built and tested
+        type: string
+        default: master
+      e2e_ref:
+        description: Ref of this repo to take the tests from
+        type: string
+        default: main
+      oracle_image:
+        description: Test this published image instead of building tokenbridge (e.g. gnosischain/tokenbridge-oracle:v1.2.3)
+        type: string
+        default: ''
+      profiles:
+        description: JSON list of profiles to run
+        type: string
+        default: '["plain","ethfcr-gcbf","ethbf-gcfcr"]'
+    secrets:
+      TENDERLY_API_TOKEN:
+        required: true
+      TENDERLY_ACCOUNT_ID:
+        required: true
+      TENDERLY_PROJECT:
+        required: true
+  workflow_dispatch:
+    inputs:
+      tokenbridge_ref:
+        description: tokenbridge commit/branch whose oracle/Dockerfile is built and tested
+        type: string
+        default: master
+      oracle_image:
+        description: Test this published image instead of building tokenbridge (optional)
+        type: string
+        default: ''
+      profiles:
+        description: JSON list of profiles to run
+        type: string
+        default: '["plain","ethfcr-gcbf","ethbf-gcfcr"]'
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  BUILT_IMAGE: tokenbridge-oracle:ci
+
+jobs:
+  build-oracle:
+    name: Build oracle image
+    # Fork PRs get no secrets, so the suite cannot run for them.
+    if: >-
+      inputs.oracle_image == '' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout tokenbridge
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: gnosischain/tokenbridge
+          ref: ${{ inputs.tokenbridge_ref || 'master' }}
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Build oracle/Dockerfile
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: ./oracle/Dockerfile
+          tags: ${{ env.BUILT_IMAGE }}
+          outputs: type=docker,dest=${{ runner.temp }}/oracle-image.tar
+          cache-from: type=gha,scope=tokenbridge-oracle
+          cache-to: type=gha,scope=tokenbridge-oracle,mode=max
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: oracle-image
+          path: ${{ runner.temp }}/oracle-image.tar
+          retention-days: 1
+
+  e2e:
+    name: E2E (${{ matrix.profile }})
+    needs: build-oracle
+    # Run after a successful build, or with no build when oracle_image is given.
+    if: >-
+      always() &&
+      (needs.build-oracle.result == 'success' || (needs.build-oracle.result == 'skipped' && inputs.oracle_image != ''))
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: ${{ fromJSON(inputs.profiles || '["plain","ethfcr-gcbf","ethbf-gcfcr"]') }}
+    env:
+      ORACLE_IMAGE: ${{ inputs.oracle_image || 'tokenbridge-oracle:ci' }}
+    steps:
+      # Inside workflow_call, a bare checkout would fetch the caller (tokenbridge),
+      # so name this repo explicitly. Runs started here use their own commit.
+      - name: Checkout e2e tests
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: gnosischain/bridge-validator-e2e-test
+          ref: ${{ github.repository == 'gnosischain/bridge-validator-e2e-test' && github.sha || inputs.e2e_ref || 'main' }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - name: Load oracle image
+        if: inputs.oracle_image == ''
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: oracle-image
+          path: ${{ runner.temp }}
+      - if: inputs.oracle_image == ''
+        run: docker load --input "${{ runner.temp }}/oracle-image.tar"
+
+      - name: Run ${{ matrix.profile }}
+        run: ci/run.sh ${{ matrix.profile }}
+        env:
+          TENDERLY_API_TOKEN: ${{ secrets.TENDERLY_API_TOKEN }}
+          TENDERLY_ACCOUNT_ID: ${{ secrets.TENDERLY_ACCOUNT_ID }}
+          TENDERLY_PROJECT: ${{ secrets.TENDERLY_PROJECT }}
+
+      - name: Teardown (delete VNets, collect logs)
+        if: always()
+        run: ci/teardown.sh
+        env:
+          TENDERLY_API_TOKEN: ${{ secrets.TENDERLY_API_TOKEN }}
+          TENDERLY_ACCOUNT_ID: ${{ secrets.TENDERLY_ACCOUNT_ID }}
+          TENDERLY_PROJECT: ${{ secrets.TENDERLY_PROJECT }}
+
+      # logs/ holds container + mock output only; the .env files with keys and
+      # RPC URLs are never uploaded.
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-logs-${{ matrix.profile }}
+          path: logs/*.log
+          retention-days: 14
+          if-no-files-found: ignore
