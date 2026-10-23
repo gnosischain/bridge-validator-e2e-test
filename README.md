@@ -145,7 +145,8 @@ And one FAQ: **you never start the observer.** `src/observer/` is a library the 
 - Docker & Docker Compose
 - A [Tenderly](https://tenderly.co/) account with API access
 - A local Docker image for the validator you want to test (`bridge-validator:fcr` for the rust
-  stack, overridable via `BRIDGE_VALIDATOR_IMAGE`)
+  stack, overridable via `BRIDGE_VALIDATOR_IMAGE`; `gnosischain/tokenbridge` for the oracle,
+  overridable via `ORACLE_IMAGE`)
 
 Once, before anything else:
 
@@ -491,10 +492,60 @@ the stack healthy even when they fail.
 
 ```bash
 pkill -9 -f "src/mock/startMocks.js"
-docker compose -f src/setup/docker/docker-compose-amb.yml down
-docker compose -f src/setup/docker/docker-compose-xdai.yml down
+docker compose -f src/setup/docker/docker-compose-amb.yml down -v
+docker compose -f src/setup/docker/docker-compose-xdai.yml down -v
 docker compose -f src/setup/docker/docker-compose-rust.yml down -v
+npm run teardown    # delete the Tenderly VNets this checkout created
 ```
+
+`down -v` drops the Redis / RabbitMQ / Postgres volumes, so the next start is cold.
+`setup.js` records every VNet it creates in `.tenderly-vnets.json`; `npm run teardown` deletes
+them and empties the file.
+
+---
+
+## CI
+
+`.github/workflows/e2e.yml` runs the suite on GitHub Actions. Each job creates its own pair of
+Tenderly VNets and new random user/validator keys, and deletes the VNets when it finishes.
+
+| Job           | What runs                                                   |
+| ------------- | ----------------------------------------------------------- |
+| `plain`       | `npm run setup`, oracle direct to Tenderly → `npm test`     |
+| `ethfcr-gcbf` | profile setup + mock → `npm test` + `test:finality:ethfcr-gcbf` |
+| `ethbf-gcfcr` | profile setup + mock → `npm test` + `test:finality:ethbf-gcfcr` |
+
+The oracle under test is built from `gnosischain/tokenbridge` (`oracle/Dockerfile`) at the
+`tokenbridge_ref` input, or a published image passed as `oracle_image`. The rust validator and
+the Omnibridge upgrade scripts are not part of CI.
+
+**Triggers**
+
+- Called by tokenbridge's `oracle_e2e.yml` (`workflow_call`) for oracle changes there.
+- PRs to this repo (not from forks: they get no secrets), against tokenbridge `master`.
+- By hand: Actions → Bridge E2E → Run workflow.
+
+**Secrets** (repo or org level): `TENDERLY_API_TOKEN`, `TENDERLY_ACCOUNT_ID`, `TENDERLY_PROJECT`.
+Nothing else is configured; every key and RPC URL is generated per run.
+
+**Run a CI job locally** — the same scripts the workflow runs:
+
+```bash
+export TENDERLY_API_TOKEN=... TENDERLY_ACCOUNT_ID=... TENDERLY_PROJECT=...
+export ORACLE_IMAGE=gnosischain/tokenbridge-oracle:latest   # or a local build
+ci/run.sh ethfcr-gcbf      # plain | ethfcr-gcbf | ethbf-gcfcr
+ci/teardown.sh             # always run this: logs to logs/, stacks down, VNets deleted
+```
+
+`ci/runSuite.js` runs each test separately and keeps going after a failure, then prints a pass/fail
+table (also shown on the GitHub run page). Container and mock logs are uploaded as the
+`e2e-logs-<profile>` artifact; the generated `.env` files are not.
+
+**Leftover VNets.** If a job dies before teardown, `.github/workflows/cleanup-vnets.yml` deletes
+CI VNets (slug `e2e-ci-…`) older than 3 hours, every 6 hours. VNets created locally use the
+`e2e-` prefix and are never swept.
+
+**Public logs.** Setup never prints private keys, and in CI it masks the Admin RPC URLs.
 
 ---
 
@@ -519,4 +570,6 @@ Rarely needed — the defaults cover both stacks as configured here.
 | `MOCK_ETH_URL` / `MOCK_GC_URL`     | `http://localhost:8545` / `:8546` (host side)                         |
 | `MOCK_ETH_PORT` / `MOCK_GC_PORT`   | `8545` / `8546`                                                       |
 | `BRIDGE_VALIDATOR_IMAGE`           | `bridge-validator:fcr`                                                |
+| `ORACLE_IMAGE`                     | `gnosischain/tokenbridge`                                             |
+| `TENDERLY_FORK_BLOCK_ETH` / `_GC`  | `latest` (fork block for each VNet)                                   |
 | `FCR_CHECK_INTERVAL_SECS`          | `10` in `.env.bridge.validator` (validator default 30s)               |

@@ -8,6 +8,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { ETHEREUM, GNOSIS } from "../utils/constant.js";
+import { forkBlock, recordVnet, slugPrefix } from "./tenderly.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = path.resolve(__dirname, "../..");
@@ -84,10 +85,9 @@ function generateAccounts() {
   const validatorPrivateKey = generatePrivateKey();
   const validatorAccount = privateKeyToAccount(validatorPrivateKey);
 
+  // Keys are written to .env.testnet only — never to stdout, since CI logs are public.
   console.log(`  Alice:     ${userAccount.address}`);
-  console.log(`  Alice Private Key: ${userPrivateKey}`);
   console.log(`  Validator: ${validatorAccount.address}`);
-  console.log(`  Validator Private Key: ${validatorPrivateKey}`);
 
   return {
     userPrivateKey,
@@ -104,7 +104,8 @@ async function createVirtualTestNet(networkId, displayName) {
   );
 
   const apiUrl = `https://api.tenderly.co/api/v1/account/${TENDERLY_ACCOUNT_ID}/project/${TENDERLY_PROJECT}/vnets`;
-  const slug = `e2e-${displayName.toLowerCase().replace(/\s+/g, "-")}-${Date.now()}`;
+  const slug = `${slugPrefix()}${displayName.toLowerCase().replace(/\s+/g, "-")}-${Date.now()}`;
+  const blockNumber = forkBlock(networkId);
 
   const { data } = await axios.post(
     apiUrl,
@@ -113,7 +114,7 @@ async function createVirtualTestNet(networkId, displayName) {
       display_name: displayName,
       fork_config: {
         network_id: networkId,
-        block_number: "latest",
+        block_number: blockNumber,
       },
       virtual_network_config: {
         chain_config: {
@@ -141,6 +142,15 @@ async function createVirtualTestNet(networkId, displayName) {
   const publicRpc = data.rpcs.find((r) => r.name === "Public RPC")?.url;
   const explorerUrl = data.explorer_page?.url || "";
 
+  // Record it before anything else can fail, so teardown can always delete it.
+  recordVnet({ id: data.id, slug, networkId });
+
+  // The Admin RPC can rewrite balances and impersonate any account on this
+  // VNet; hide it from public CI logs (GitHub masks it for the rest of the job).
+  if (process.env.GITHUB_ACTIONS === "true" && adminRpc) {
+    console.log(`::add-mask::${adminRpc}`);
+  }
+  console.log(`  Id:         ${data.id}`);
   console.log(`  Admin RPC:  ${adminRpc}`);
   console.log(`  Public RPC: ${publicRpc}`);
   console.log(`  Explorer:   ${explorerUrl}`);

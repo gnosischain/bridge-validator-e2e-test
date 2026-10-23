@@ -12,7 +12,7 @@ services:
       - net_rabbit_bridge_senderhome_xdai
       - net_rabbit_bridge_senderforeign_xdai
     restart: unless-stopped
-    volumes: ["~/bridge_data/rabbitmq_xdai:/var/lib/rabbitmq/mnesia"]
+    volumes: ["rabbitmq_xdai:/var/lib/rabbitmq/mnesia"]
   redis_xdai:
     cpus: 0.1
     mem_limit: 500m
@@ -27,13 +27,15 @@ services:
       - net_db_bridge_shutdown_xdai
       - net_db_bridge_fcrvalidator_xdai
     restart: unless-stopped
-    volumes: ["~/bridge_data/redis_xdai:/data"]
+    volumes: ["redis_xdai:/data"]
     ports:
       - "6378:6379"
   bridge_request_xdai:
     cpus: 0.1
     mem_limit: 500m
-    image: gnosischain/tokenbridge
+    image: ${ORACLE_IMAGE:-gnosischain/tokenbridge}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     env_file: ./.env.oracle.xdai
     environment:
       - NODE_ENV=production
@@ -45,7 +47,9 @@ services:
   bridge_affirmation_xdai:
     cpus: 0.1
     mem_limit: 500m
-    image: gnosischain/tokenbridge
+    image: ${ORACLE_IMAGE:-gnosischain/tokenbridge}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     env_file: ./.env.oracle.xdai
     environment:
       - NODE_ENV=production
@@ -57,7 +61,9 @@ services:
   bridge_senderhome_xdai:
     cpus: 0.1
     mem_limit: 500m
-    image: gnosischain/tokenbridge
+    image: ${ORACLE_IMAGE:-gnosischain/tokenbridge}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     env_file: ./.env.oracle.xdai
     environment:
       - NODE_ENV=production
@@ -69,7 +75,9 @@ services:
   bridge_senderforeign_xdai:
     cpus: 0.1
     mem_limit: 500m
-    image: gnosischain/tokenbridge
+    image: ${ORACLE_IMAGE:-gnosischain/tokenbridge}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     env_file: ./.env.oracle.xdai
     environment:
       - NODE_ENV=production
@@ -81,7 +89,9 @@ services:
   bridge_shutdown_xdai:
     cpus: 0.1
     mem_limit: 500m
-    image: gnosischain/tokenbridge
+    image: ${ORACLE_IMAGE:-gnosischain/tokenbridge}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     env_file: ./.env.oracle.xdai
     environment:
       - NODE_ENV=production
@@ -92,7 +102,9 @@ services:
   bridge_fcrvalidator_xdai:
     cpus: 0.1
     mem_limit: 500m
-    image: gnosischain/tokenbridge
+    image: ${ORACLE_IMAGE:-gnosischain/tokenbridge}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     env_file: ./.env.oracle.xdai
     environment:
       - NODE_ENV=production
@@ -122,3 +134,7 @@ networks:
     driver: bridge
   net_rabbit_bridge_senderforeign_xdai:
     driver: bridge
+
+volumes:
+  rabbitmq_xdai:
+  redis_xdai:

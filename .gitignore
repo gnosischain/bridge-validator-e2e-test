@@ -5,9 +5,14 @@ node_modules/
 .env.*
 !.env.*.example
 !contracts/.env.example
+!.env.example
 
 # Foundry build output for contract K
 contracts/out/
 contracts/cache/
 src/setup/dockers/.env.*
 !src/setup/dockers/.env.*.example
+
+# CI / teardown bookkeeping
+logs/
+.tenderly-vnets.json

@@ -6,6 +6,9 @@
   "scripts": {
     "setup": "node src/setup/setup.js",
     "mock": "node src/mock/startMocks.js",
+    "teardown": "node src/setup/teardown.js",
+    "ci": "ci/run.sh",
+    "ci:teardown": "ci/teardown.sh",
     "test:finality:ethfcr-gcbf:stall": "node src/tests/finality/block-finality/stallsUntilFinalized.js",
     "test:finality:ethfcr-gcbf:stall-complete": "node src/tests/finality/block-finality/completesAfterFinalized.js",
     "test:finality:ethfcr-gcbf:preflight-unsupported": "node src/tests/finality/fcr/preflightSafeUnsupported.js",

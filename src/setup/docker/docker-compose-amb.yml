@@ -12,7 +12,7 @@ services:
       - net_rabbit_bridge_senderhome_amb
       - net_rabbit_bridge_senderforeign_amb
     restart: unless-stopped
-    volumes: ["~/bridge_data/rabbitmq_amb:/var/lib/rabbitmq/mnesia"]
+    volumes: ["rabbitmq_amb:/var/lib/rabbitmq/mnesia"]
   redis_amb:
     cpus: 0.1
     mem_limit: 500m
@@ -27,13 +27,15 @@ services:
       - net_db_bridge_shutdown_amb
       - net_db_bridge_fcrvalidator_amb
     restart: unless-stopped
-    volumes: ["~/bridge_data/redis_amb:/data"]
+    volumes: ["redis_amb:/data"]
     ports:
       - "6379:6379"
   bridge_request_amb:
     cpus: 0.1
     mem_limit: 500m
-    image: gnosischain/tokenbridge
+    image: ${ORACLE_IMAGE:-gnosischain/tokenbridge}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     env_file: ./.env.oracle.amb
     environment:
       - NODE_ENV=production
@@ -45,7 +47,9 @@ services:
   bridge_affirmation_amb:
     cpus: 0.1
     mem_limit: 500m
-    image: gnosischain/tokenbridge
+    image: ${ORACLE_IMAGE:-gnosischain/tokenbridge}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     env_file: ./.env.oracle.amb
     environment:
       - NODE_ENV=production
@@ -57,7 +61,9 @@ services:
   bridge_senderhome_amb:
     cpus: 0.1
     mem_limit: 500m
-    image: gnosischain/tokenbridge
+    image: ${ORACLE_IMAGE:-gnosischain/tokenbridge}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     env_file: ./.env.oracle.amb
     environment:
       - NODE_ENV=production
@@ -69,7 +75,9 @@ services:
   bridge_senderforeign_amb:
     cpus: 0.1
     mem_limit: 500m
-    image: gnosischain/tokenbridge
+    image: ${ORACLE_IMAGE:-gnosischain/tokenbridge}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     env_file: ./.env.oracle.amb
     environment:
       - NODE_ENV=production
@@ -81,7 +89,9 @@ services:
   bridge_shutdown_amb:
     cpus: 0.1
     mem_limit: 500m
-    image: gnosischain/tokenbridge
+    image: ${ORACLE_IMAGE:-gnosischain/tokenbridge}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     env_file: ./.env.oracle.amb
     environment:
       - NODE_ENV=production
@@ -92,7 +102,9 @@ services:
   bridge_fcrvalidator_amb:
     cpus: 0.1
     mem_limit: 500m
-    image: gnosischain/tokenbridge
+    image: ${ORACLE_IMAGE:-gnosischain/tokenbridge}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     env_file: ./.env.oracle.amb
     environment:
       - NODE_ENV=production
@@ -122,3 +134,7 @@ networks:
     driver: bridge
   net_rabbit_bridge_senderforeign_amb:
     driver: bridge
+
+volumes:
+  rabbitmq_amb:
+  redis_amb:
